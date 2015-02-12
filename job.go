@@ -1,6 +1,11 @@
 package beanstalk
 
-import "time"
+import (
+	"errors"
+	"time"
+)
+
+var ErrJobFinished = errors.New("Job was already finished")
 
 // JobMethod describes a type of beanstalk job finalizer.
 type JobMethod int
@@ -26,8 +31,13 @@ type Job struct {
 }
 
 func (job *Job) finishJob(method JobMethod, priority uint32, delay time.Duration) error {
+	if job.Finish == nil {
+		return ErrJobFinished
+	}
+
 	ret := job.Finish.FinishJob(job, method, priority, delay)
 	job.Finish = nil
+
 	return ret
 }
 
