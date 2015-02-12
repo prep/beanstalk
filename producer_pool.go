@@ -19,11 +19,14 @@ type ProducerPool struct {
 // NewProducerPool creates a pool of Producer objects.
 func NewProducerPool(sockets []string, options *Options) *ProducerPool {
 	pool := &ProducerPool{putCh: make(chan *Put), options: SanitizedOptions(options)}
-	pool.putTokens = make(chan *putToken, len(sockets))
+	pool.putTokens = make(chan *putToken, len(sockets)*2)
 
 	for _, socket := range sockets {
 		pool.producers = append(pool.producers, NewProducer(socket, pool.putCh, options))
+	}
 
+	// Create twice as many put-tokens as there are sockets.
+	for i := 0; i < len(sockets)*2; i++ {
 		timer := time.NewTimer(time.Second)
 		timer.Stop()
 
