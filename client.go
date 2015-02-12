@@ -189,6 +189,12 @@ func (client *Client) Reserve() (*Job, error) {
 
 	// Fetch the TTR value for this job via stats-job. If this fails, ignore it.
 	if _, yaml, err := client.requestResponse("stats-job %d", job.ID); err == nil {
+		if val, err := yamlValue(yaml, "pri"); err == nil {
+			if prio, err := strconv.ParseUint(val, 10, 32); err == nil {
+				job.Priority = uint32(prio)
+			}
+		}
+
 		if val, err := yamlValue(yaml, "ttr"); err == nil {
 			if ttr, err := strconv.Atoi(val); err == nil {
 				job.TTR = time.Duration(ttr) * time.Second

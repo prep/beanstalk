@@ -26,10 +26,11 @@ type JobFinisher interface {
 
 // Job contains the data of a reserved job.
 type Job struct {
-	ID     uint64
-	Body   []byte
-	TTR    time.Duration
-	Finish JobFinisher
+	ID       uint64
+	Body     []byte
+	Priority uint32
+	TTR      time.Duration
+	Finish   JobFinisher
 }
 
 func (job *Job) finishJob(method JobMethod, priority uint32, delay time.Duration) error {
