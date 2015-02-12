@@ -154,10 +154,13 @@ func (consumer *Consumer) jobManager() {
 		// is needed before trying another reserve request.
 		case <-fallThrough.C:
 
-		//
+		// Determine if this consumer should pause. If there is an unoffered job
+		// pending, release it back to the queue.
 		case paused = <-consumer.pause:
-			if job != nil && !offered {
-				job.
+			if paused && job != nil && !offered {
+				consumer.Release(job, job.Priority, time.Duration(0))
+				job, jobC = nil, nil
+				touchTimer.Stop()
 			}
 
 		// Stop this goroutine from running.
