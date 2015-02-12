@@ -165,7 +165,7 @@ func TestRelease(t *testing.T) {
 	client := NewTestClient(t, "release 12345 1024 10", "RELEASED")
 	defer client.Close()
 
-	if err := client.Release(&Job{ID: 12345}, 1024, 10); err != nil {
+	if err := client.Release(&Job{ID: 12345}, 1024, time.Duration(10 * time.Second)); err != nil {
 		t.Fatalf("Unexpected error from Release: %s", err)
 	}
 }
@@ -174,7 +174,7 @@ func TestReleaseBuried(t *testing.T) {
 	client := NewTestClient(t, "release 12345 1024 10", "BURIED")
 	defer client.Close()
 
-	if err := client.Release(&Job{ID: 12345}, 1024, 10); err != ErrBuried {
+	if err := client.Release(&Job{ID: 12345}, 1024, time.Duration(10 * time.Second)); err != ErrBuried {
 		t.Fatalf("Expected ErrBuried, but got: %s", err)
 	}
 }
@@ -183,7 +183,7 @@ func TestReleaseNotFound(t *testing.T) {
 	client := NewTestClient(t, "release 12345 1024 10", "NOT_FOUND")
 	defer client.Close()
 
-	if err := client.Release(&Job{ID: 12345}, 1024, 10); err != ErrNotFound {
+	if err := client.Release(&Job{ID: 12345}, 1024, time.Duration(10 * time.Second)); err != ErrNotFound {
 		t.Fatalf("Expected ErrNotFound, but got: %s", err)
 	}
 }
