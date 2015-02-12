@@ -160,8 +160,8 @@ func (client *Client) Put(job *Put) (uint64, error) {
 
 // Release a reserved job. This is done after being unable to process the job,
 // but another consumer might be successful.
-func (client *Client) Release(job *Job, priority uint32, delay int) error {
-	_, _, err := client.requestResponse("release %d %d %d", job.ID, priority, delay)
+func (client *Client) Release(job *Job, priority uint32, delay time.Duration) error {
+	_, _, err := client.requestResponse("release %d %d %d", job.ID, priority, delay/time.Second)
 	return err
 }
 

@@ -14,7 +14,7 @@ type finishJobRequest struct {
 	method   JobMethod
 	ret      chan error
 	priority uint32
-	delay    int
+	delay    time.Duration
 }
 
 // Consumer reserves jobs from a beanstalk server and keeps those jobs alive
@@ -48,7 +48,7 @@ func (consumer *Consumer) Stop() {
 
 // FinishJob is an interface function for Job that gets called whenever it is
 // decided to finalize the job by either burying, deleting or releasing it.
-func (consumer *Consumer) FinishJob(job *Job, method JobMethod, priority uint32, delay int) error {
+func (consumer *Consumer) FinishJob(job *Job, method JobMethod, priority uint32, delay time.Duration) error {
 	req := &finishJobRequest{method: method, ret: make(chan error), priority: priority, delay: delay}
 	consumer.finishJob <- req
 	return <-req.ret

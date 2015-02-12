@@ -14,7 +14,7 @@ const (
 
 // JobFinisher defines an interface which a Job can call to finish up.
 type JobFinisher interface {
-	FinishJob(*Job, JobMethod, uint32, int) error
+	FinishJob(*Job, JobMethod, uint32, time.Duration) error
 }
 
 // Job contains the data of a reserved job.
@@ -25,7 +25,7 @@ type Job struct {
 	Finish JobFinisher
 }
 
-func (job *Job) finishJob(method JobMethod, priority uint32, delay int) error {
+func (job *Job) finishJob(method JobMethod, priority uint32, delay time.Duration) error {
 	ret := job.Finish.FinishJob(job, method, priority, delay)
 	job.Finish = nil
 	return ret
@@ -42,6 +42,6 @@ func (job *Job) Delete() error {
 }
 
 // Release tells the consumer to release this job.
-func (job *Job) Release(priority uint32, delay int) error {
+func (job *Job) Release(priority uint32, delay time.Duration) error {
 	return job.finishJob(ReleaseJob, priority, delay)
 }
