@@ -2,7 +2,6 @@ package beanstalk
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"net/textproto"
@@ -150,7 +149,12 @@ func (client *Client) Ignore(tube string) error {
 
 // Put a new job into beanstalk.
 func (client *Client) Put(job *Put) (uint64, error) {
-	id, _, err := client.requestResponse("put %d %d %d %d\r\n%s", job.PutParams.Priority, job.PutParams.Delay, job.PutParams.TTR, len(job.Body), job.Body)
+	id, _, err := client.requestResponse("put %d %d %d %d\r\n%s",
+		job.PutParams.Priority,
+		job.PutParams.Delay/time.Second,
+		job.PutParams.TTR/time.Second,
+		len(job.Body),
+		job.Body)
 	return id, err
 }
 
@@ -227,8 +231,6 @@ func (client *Client) request(format string, args ...interface{}) error {
 		defer client.c.SetWriteDeadline(time.Time{})
 	}
 
-	fmt.Printf("-> %s\n", fmt.Sprintf(format, args...))
-
 	if err := client.conn.PrintfLine(format, args...); err != nil {
 		client.OpenConnection()
 		return ErrNotConnected
@@ -244,8 +246,6 @@ func (client *Client) response() (uint64, []byte, error) {
 		client.OpenConnection()
 		return 0, nil, ErrNotConnected
 	}
-
-	fmt.Printf("<- %s\n", line)
 
 	items := strings.SplitN(line, " ", 2)
 	if len(items[0]) == 0 {

@@ -1,5 +1,7 @@
 package beanstalk
 
+import "time"
+
 // Put describes a put request.
 type Put struct {
 	Body      []byte
@@ -11,6 +13,6 @@ type Put struct {
 // PutParams describe the parameters for a put request.
 type PutParams struct {
 	Priority uint32
-	Delay    int
-	TTR      int
+	Delay    time.Duration
+	TTR      time.Duration
 }
