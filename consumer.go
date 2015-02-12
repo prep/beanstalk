@@ -24,6 +24,7 @@ type Consumer struct {
 	tubes     []string
 	jobC      chan *Job
 	finishJob chan *finishJobRequest
+	pause     chan bool
 	stop      chan struct{}
 }
 
@@ -34,6 +35,7 @@ func NewConsumer(socket string, tubes []string, jobC chan *Job, options *Options
 		tubes:     tubes,
 		jobC:      jobC,
 		finishJob: make(chan *finishJobRequest),
+		pause:     make(chan bool),
 		stop:      make(chan struct{}, 1)}
 
 	go consumer.jobManager()
@@ -44,6 +46,16 @@ func NewConsumer(socket string, tubes []string, jobC chan *Job, options *Options
 // stop running.
 func (consumer *Consumer) Stop() {
 	consumer.stop <- struct{}{}
+}
+
+// Play signals this consumer to start reserving jobs.
+func (consumer *Consumer) Play() {
+	consumer.pause <- false
+}
+
+// Pause signals this consumer to stop reserving jobs.
+func (consumer *Consumer) Pause() {
+	consumer.pause <- true
 }
 
 // FinishJob is an interface function for Job that gets called whenever it is
@@ -59,6 +71,7 @@ func (consumer *Consumer) FinishJob(job *Job, method JobMethod, priority uint32,
 func (consumer *Consumer) jobManager() {
 	var job *Job
 	var jobC chan *Job
+	var paused, offered = true, false
 
 	consumer.OpenConnection()
 	defer consumer.CloseConnection()
@@ -74,10 +87,9 @@ func (consumer *Consumer) jobManager() {
 	for {
 		fallThrough.Clear()
 
-		if consumer.isConnected && job == nil {
+		if !paused && consumer.isConnected && job == nil {
 			if job, _ = consumer.Reserve(); job != nil {
-				job.Finish = consumer
-				jobC = consumer.jobC
+				job.Finish, jobC, offered = consumer, consumer.jobC, false
 				touchTimer.Reset(job.TTR)
 			} else {
 				fallThrough.Set()
@@ -85,9 +97,10 @@ func (consumer *Consumer) jobManager() {
 		}
 
 		select {
-		// Offer a reserved job up and nullify jobC on success.
+		// Offer a reserved job up and nullify jobC on success, to make sure the
+		// job doesn't get sent twice.
 		case jobC <- job:
-			jobC = nil
+			jobC, offered = nil, true
 
 		// Regularly touch the reserved job to keep it reserved.
 		case <-touchTimer.C:
@@ -140,6 +153,12 @@ func (consumer *Consumer) jobManager() {
 		// Fallthrough in case no job could be reserved, but a quick channel check
 		// is needed before trying another reserve request.
 		case <-fallThrough.C:
+
+		//
+		case paused = <-consumer.pause:
+			if job != nil && !offered {
+				job.
+			}
 
 		// Stop this goroutine from running.
 		case <-consumer.stop:

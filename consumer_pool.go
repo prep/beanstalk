@@ -27,3 +27,17 @@ func (pool *ConsumerPool) Stop() {
 		pool.consumers[i] = nil
 	}
 }
+
+// Play tells all the consumers to start reservering jobs.
+func (pool *ConsumerPool) Play() {
+	for _, consumer := range pool.consumers {
+		consumer.Play()
+	}
+}
+
+// Pause tells all the consumer to stop reservering jobs.
+func (pool *ConsumerPool) Pause() {
+	for _, consumer := range pool.consumers {
+		consumer.Pause()
+	}
+}
