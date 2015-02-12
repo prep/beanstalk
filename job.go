@@ -5,6 +5,8 @@ import (
 	"time"
 )
 
+// ErrJobFinished can get returned on any of the Job's public functions, when
+// this Job was already finalized by a previous call.
 var ErrJobFinished = errors.New("Job was already finished")
 
 // JobMethod describes a type of beanstalk job finalizer.
