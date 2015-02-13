@@ -21,7 +21,14 @@ func NewTestJob() *Job {
 
 func TestBuryJob(t *testing.T) {
 	job := NewTestJob()
-	if err := job.Bury(1024); err != nil {
+	if err := job.Bury(); err != nil {
+		t.Fatalf("Unexpected error from Bury: %s", err)
+	}
+}
+
+func TestBuryJobWithPriority(t *testing.T) {
+	job := NewTestJob()
+	if err := job.BuryWithPriority(1024); err != nil {
 		t.Fatalf("Unexpected error from Bury: %s", err)
 	}
 }
@@ -35,7 +42,14 @@ func TestDeleteJob(t *testing.T) {
 
 func TestReleaseJob(t *testing.T) {
 	job := NewTestJob()
-	if err := job.Release(1024, time.Duration(time.Second)); err != nil {
+	if err := job.Release(); err != nil {
+		t.Fatalf("Unexpected error from Release: %s", err)
+	}
+}
+
+func TestReleaseJobWithParams(t *testing.T) {
+	job := NewTestJob()
+	if err := job.ReleaseWithParams(1024, time.Duration(time.Second)); err != nil {
 		t.Fatalf("Unexpected error from Release: %s", err)
 	}
 }

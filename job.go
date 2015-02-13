@@ -44,8 +44,15 @@ func (job *Job) finishJob(method JobMethod, priority uint32, delay time.Duration
 	return ret
 }
 
-// Bury tells the consumer to bury this job.
-func (job *Job) Bury(priority uint32) error {
+// Bury tells the consumer to bury this job with the same priority as this job
+// was inserted with.
+func (job *Job) Bury() error {
+	return job.finishJob(BuryJob, job.Priority, 0)
+}
+
+// BuryWithPriority tells the consumer to bury this job with the specified
+// priority.
+func (job *Job) BuryWithPriority(priority uint32) error {
 	return job.finishJob(BuryJob, priority, 0)
 }
 
@@ -54,7 +61,14 @@ func (job *Job) Delete() error {
 	return job.finishJob(DeleteJob, 0, 0)
 }
 
-// Release tells the consumer to release this job.
-func (job *Job) Release(priority uint32, delay time.Duration) error {
+// Release tells the consumer to release this job with the same priority as
+// this job was inserted with and without delay.
+func (job *Job) Release() error {
+	return job.finishJob(ReleaseJob, job.Priority, 0)
+}
+
+// ReleaseWithParams tells the consumer to release this job with the specified
+// priority and delay.
+func (job *Job) ReleaseWithParams(priority uint32, delay time.Duration) error {
 	return job.finishJob(ReleaseJob, priority, delay)
 }
