@@ -73,7 +73,7 @@ When you receive a job on your consumer channel, you don't need to worry about t
 
 To finalize a job, the following functions are available on the *Job{}* object:
 ```go
-type JobFinalizer interface {
+type DummyInterfaceForJob interface {
     Bury() error
     BuryWithPriority(priority uint32) error
     Delete() error
