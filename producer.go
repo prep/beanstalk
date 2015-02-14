@@ -56,6 +56,7 @@ func (producer *Producer) connectionManager() {
 			putCh = producer.putCh
 
 		case <-producer.connClosedC:
+			lastTube = ""
 			putCh = nil
 
 		// Close the connection and stop this goroutine from running.
