@@ -14,19 +14,20 @@ To get started, you need to import the client into your Go project:
 import "github.com/prep/beanstalk"
 ```
 
-The easiest way to work with this client is by creating a ProducerPool and/or ConsumerPool. A pool has 1 or more connections to a beanstalk server.
+The easiest way to work with this client is by creating a *ProducerPool{}* and/or *ConsumerPool{}*.
 
 #### ProducerPool
-A ProducerPool creates 1 or more producers that connects to a beanstalk server with the purpose of feeding it **put** requests. Here is an example of a ProducerPool with a connection to the beanstalk server on **127.0.0.1:11300**:
+A ProducerPool creates 1 or more producers that connects to a beanstalk server with the purpose of feeding it *put* requests. Here is an example of a ProducerPool with a connection to the beanstalk server on *127.0.0.1:11300*:
 
 ```go
 // Create a producer pool with 1 producer.
 pool := beanstalk.NewProducerPool([]string{"127.0.0.1:11300"}, nil)
+defer pool.Stop()
 
 // Reusable put parameters.
 putParams := &beanstalk.PutParams{1024, 0, 5}
 
-// Put a job containing 'Hello World' in the 'test' tube.
+// Insert a job containing "Hello World" in the beanstalk tube named "test".
 id, err := pool.Put("test", []byte("Hello World"), putParams)
 if err != nil {
     fmt.Println(err)
@@ -34,17 +35,17 @@ if err != nil {
 }
 
 fmt.Printf("Created job with id: %d\n", id)
-
-// Disconnect and stop the producers.
-pool.Stop()
 ```
 
 #### ConsumerPool
-A ConsumerPool creates 1 or more consumers that connects to a beanstalk server with the purpose of reserving jobs. Here is an example of a ConsumerPool with a connection to the beanstalk server on **127.0.0.1:11300** that watches tube **test** for jobs to reserve.
+A ConsumerPool creates 1 or more consumers that connects to a beanstalk server with the purpose of reserving jobs. Here is an example of a ConsumerPool with a connection to the beanstalk server on *127.0.0.1:11300* that watches tube *test* for jobs to reserve.
 
 ```go
 // Create a consumer pool with 1 consumer, watching 1 tube.
 pool := beanstalk.NewConsumerPool([]string{"127.0.0.1:11300"}, []string{"test"}, nil)
+defer pool.Stop()
+
+pool.Play()
 
 for {
     select {
@@ -52,17 +53,39 @@ for {
         fmt.Printf("Received job with id: %d\n", job.ID)
 
         if err := doSomethingWithJob(job); err != nil {
+            fmt.Printf("Burying job %d with body: %s\n", job.ID, string(job.Body))
             job.Bury()
-            // job.Release()
         } else {
             job.Delete()
         }
+    // ...
     }
 }
 ```
 
+##### Play() and Pause()
+By default, *Consumer{}* and *ConsumerPool{}* objects start out in a paused state, which means that even though they will try to establish a connection to the beanstalk server immediately, they will not reserve any jobs until the *Play()* function has been called. If you want to stop the stream of reserved jobs for a moment, you can call the *Pause()* function.
+
+It should be noted that any job you've received will still be kept alive on the beanstalk server until you've finalized it.
+
+##### Job
+When you receive a job on your consumer channel, you don't need to worry about the TTR of that job. Each Consumer{} object will maintain a reservation of that job by touching it on the beanstalk server until you've finalized it.
+
+To finalize a job, the following functions are available on the *Job{}* object:
+```go
+type JobFinalizer interface {
+    Bury() error
+    BuryWithPriority(priority uint32) error
+    Delete() error
+    Release() error
+    ReleaseWithParams(priority uint32, delay time.Duration) error
+}
+```
+
+The *Bury()* and *Release()* functions use the priority with which the job was inserted in the first place and *Release()* uses a delay of 0, meaning immediately.
+
 #### Options
-An **Options** struct can be provided at the end of each **NewProducerPool()** and **NewConsumerPool()** call. It allows you to finetune some behaviour under the hood.
+An **Options** struct can be provided at the end of each *NewProducer()*, *NewProducerPool()*, *NewConsumer()* and *NewConsumerPool()* call. It allows you to finetune some behaviour under the hood.
 
 ```go
 options := &beanstalk.Options{
