@@ -1,16 +1,9 @@
 package beanstalk
 
-import (
-	"errors"
-	"time"
-)
+import "time"
 
-// ErrJobLost can be returned by FinishJob() when a Job wants to finalize,
-// but the connection was lost in the meantime, or the job reservation
-// couldn't be kept.
-var ErrJobLost = errors.New("Job was lost")
-
-type finishJobRequest struct {
+type finalizeJob struct {
+	job      *Job
 	method   JobMethod
 	ret      chan error
 	priority uint32
@@ -23,7 +16,7 @@ type Consumer struct {
 	Client
 	tubes       []string
 	jobC        chan<- *Job
-	finishJob   chan *finishJobRequest
+	finalizeJob chan *finalizeJob
 	reserve     chan struct{}
 	reservedJob chan *Job
 	pause       chan bool
@@ -36,7 +29,7 @@ func NewConsumer(socket string, tubes []string, jobC chan<- *Job, options *Optio
 		Client:      NewClient(socket, options),
 		tubes:       tubes,
 		jobC:        jobC,
-		finishJob:   make(chan *finishJobRequest),
+		finalizeJob: make(chan *finalizeJob),
 		reserve:     make(chan struct{}),
 		reservedJob: make(chan *Job),
 		pause:       make(chan bool, 1),
@@ -63,12 +56,12 @@ func (consumer *Consumer) Pause() {
 	consumer.pause <- true
 }
 
-// FinishJob is an interface function for Job that gets called whenever it is
+// FinalizeJob is an interface function for Job that gets called whenever it is
 // decided to finalize the job by either burying, deleting or releasing it.
-func (consumer *Consumer) FinishJob(job *Job, method JobMethod, priority uint32, delay time.Duration) error {
-	req := &finishJobRequest{method: method, ret: make(chan error), priority: priority, delay: delay}
-	consumer.finishJob <- req
-	return <-req.ret
+func (consumer *Consumer) FinalizeJob(job *Job, method JobMethod, priority uint32, delay time.Duration) error {
+	fJob := &finalizeJob{job: job, method: method, ret: make(chan error), priority: priority, delay: delay}
+	consumer.finalizeJob <- fJob
+	return <-fJob.ret
 }
 
 // jobReserver simply reserves jobs.
@@ -82,10 +75,6 @@ func (consumer *Consumer) jobReserver() {
 			}
 
 			job, _ := consumer.Reserve()
-			if job != nil {
-				job.Finish = consumer
-			}
-
 			consumer.reservedJob <- job
 		}
 	}
@@ -146,7 +135,7 @@ func (consumer *Consumer) jobManager() {
 				break
 			}
 
-			jobC = consumer.jobC
+			jobC, job.Manager = consumer.jobC, consumer
 			touchTimer.Reset(job.TTR)
 
 		// Offer up the reserved job.
@@ -163,26 +152,27 @@ func (consumer *Consumer) jobManager() {
 			touchTimer.Reset(job.TTR)
 
 		// Finalize a job, which means either bury, delete or release it.
-		case req := <-consumer.finishJob:
-			if job == nil {
-				req.ret <- ErrJobLost
+		case req := <-consumer.finalizeJob:
+			// This can happen if a disconnect occured before a job was finalized.
+			if req.job != job {
+				req.ret <- ErrNotFound
 				break
 			}
 
 			switch req.method {
 			case BuryJob:
-				req.ret <- consumer.Bury(job, req.priority)
+				req.ret <- consumer.Bury(req.job, req.priority)
 			case DeleteJob:
-				req.ret <- consumer.Delete(job)
+				req.ret <- consumer.Delete(req.job)
 			case ReleaseJob:
-				req.ret <- consumer.Release(job, req.priority, req.delay)
+				req.ret <- consumer.Release(req.job, req.priority, req.delay)
 			}
 
 			job = nil
 			reserveJob()
 			touchTimer.Stop()
 
-		// Set up a new connection and watch the relevant tubes.
+		// Set up a new connection.
 		case conn := <-consumer.connCreatedC:
 			consumer.SetConnection(conn)
 
