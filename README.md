@@ -63,12 +63,12 @@ for {
 }
 ```
 
-##### Play() and Pause()
-By default, *Consumer{}* and *ConsumerPool{}* objects start out in a paused state, which means that even though they will try to establish a connection to the beanstalk server immediately, they will not reserve any jobs until the *Play()* function has been called. If you want to stop the stream of reserved jobs for a moment, you can call the *Pause()* function.
+Managing consumers
+------------------
+By default, *Consumer{}* and *ConsumerPool{}* objects start out in a paused state, which means that even though they will try to establish a connection to the beanstalk server immediately, they will not reserve any jobs until the *Play()* function has been called. If you want to stop the stream of reserved jobs for a moment, you can call the *Pause()* function. It should be noted that calling *Pause()* won't affect jobs that are currently reserved.
 
-It should be noted that any job you've received will still be kept alive on the beanstalk server until you've finalized it.
-
-##### Job
+Jobs
+----
 When you receive a job on your consumer channel, you don't need to worry about the TTR of that job. Each *Consumer{}* object will maintain a reservation of that job by touching it on the beanstalk server until you've finalized it.
 
 To finalize a job, the following functions are available on the *Job{}* object:
@@ -84,7 +84,8 @@ type DummyInterfaceForJob interface {
 
 The *Bury()* and *Release()* functions use the priority with which the job was inserted in the first place and *Release()* uses a delay of 0, meaning immediately.
 
-#### Options
+Options
+-------
 An **Options** struct can be provided at the end of each *NewProducer()*, *NewProducerPool()*, *NewConsumer()* and *NewConsumerPool()* function. It allows you to finetune some behaviour under the hood.
 
 ```go
