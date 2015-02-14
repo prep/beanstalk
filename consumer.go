@@ -21,39 +21,44 @@ type finishJobRequest struct {
 // until an external consumer has either buried, deleted or released it.
 type Consumer struct {
 	Client
-	tubes     []string
-	jobC      chan *Job
-	finishJob chan *finishJobRequest
-	pause     chan bool
-	stop      chan struct{}
+	tubes       []string
+	jobC        chan<- *Job
+	finishJob   chan *finishJobRequest
+	reserve     chan struct{}
+	reservedJob chan *Job
+	pause       chan bool
+	stop        chan struct{}
 }
 
 // NewConsumer creates a new Consumer object.
-func NewConsumer(socket string, tubes []string, jobC chan *Job, options *Options) *Consumer {
+func NewConsumer(socket string, tubes []string, jobC chan<- *Job, options *Options) *Consumer {
 	consumer := &Consumer{
-		Client:    NewClient(socket, options),
-		tubes:     tubes,
-		jobC:      jobC,
-		finishJob: make(chan *finishJobRequest),
-		pause:     make(chan bool),
-		stop:      make(chan struct{}, 1)}
+		Client:      NewClient(socket, options),
+		tubes:       tubes,
+		jobC:        jobC,
+		finishJob:   make(chan *finishJobRequest),
+		reserve:     make(chan struct{}),
+		reservedJob: make(chan *Job),
+		pause:       make(chan bool, 1),
+		stop:        make(chan struct{}, 1)}
 
+	go consumer.jobReserver()
 	go consumer.jobManager()
+
 	return consumer
 }
 
-// Stop signals the connnectionManager() goroutine to close its connection and
-// stop running.
+// Stop tells the jobManager() goroutine to stop running.
 func (consumer *Consumer) Stop() {
 	consumer.stop <- struct{}{}
 }
 
-// Play signals this consumer to start reserving jobs.
+// Play makes this consumer reserve jobs.
 func (consumer *Consumer) Play() {
 	consumer.pause <- false
 }
 
-// Pause signals this consumer to stop reserving jobs.
+// Pause stops this consumer from reserving jobs.
 func (consumer *Consumer) Pause() {
 	consumer.pause <- true
 }
@@ -66,12 +71,32 @@ func (consumer *Consumer) FinishJob(job *Job, method JobMethod, priority uint32,
 	return <-req.ret
 }
 
+// jobReserver simply reserves jobs.
+func (consumer *Consumer) jobReserver() {
+	for {
+		select {
+		case _, ok := <-consumer.reserve:
+			if !ok {
+				close(consumer.reservedJob)
+				return
+			}
+
+			job, _ := consumer.Reserve()
+			if job != nil {
+				job.Finish = consumer
+			}
+
+			consumer.reservedJob <- job
+		}
+	}
+}
+
 // jobManager is responsible for maintaining a connection to the beanstalk
 // server, reserving jobs, keeping them reserved and finalizing them.
 func (consumer *Consumer) jobManager() {
 	var job *Job
-	var jobC chan *Job
-	var paused, offered = true, false
+	var jobC chan<- *Job
+	var paused, requested, offered, ok = true, false, false, true
 
 	consumer.OpenConnection()
 	defer consumer.CloseConnection()
@@ -80,32 +105,58 @@ func (consumer *Consumer) jobManager() {
 	touchTimer := time.NewTimer(time.Second)
 	touchTimer.Stop()
 
-	// If a connection is up but no job could be reserved, use a fallthrough
-	// channel to make the select statement non-blocking.
-	fallThrough := newFallThrough()
+	// reserveJob fetches a new job if the state allows for it.
+	reserveJob := func() {
+		if !requested && !paused && consumer.isConnected && job == nil {
+			consumer.reserve <- struct{}{}
+			requested = true
+		}
+	}
+
+	// releaseJob releases a job back to beanstalk when it hasn't already been
+	// offered up.
+	releaseJob := func() {
+		if job != nil && !offered {
+			consumer.Release(job, job.Priority, 0)
+			job, jobC = nil, nil
+			touchTimer.Stop()
+		}
+	}
 
 	for {
-		fallThrough.Clear()
-
-		if !paused && consumer.isConnected && job == nil {
-			if job, _ = consumer.Reserve(); job != nil {
-				job.Finish, jobC, offered = consumer, consumer.jobC, false
-				touchTimer.Reset(job.TTR)
-			} else {
-				fallThrough.Set()
-			}
-		}
-
 		select {
-		// Offer a reserved job up and nullify jobC on success, to make sure the
-		// job doesn't get sent twice.
+		// Wait for a new reserved job.
+		case job, ok = <-consumer.reservedJob:
+			// If this channel closes, exit this goroutine.
+			if !ok {
+				return
+			}
+
+			requested, offered = false, false
+
+			// If no job could be reserved, try again.
+			if job == nil {
+				reserveJob()
+				break
+			}
+
+			// If this consumer was paused in the meantime, release the job.
+			if paused {
+				releaseJob()
+				break
+			}
+
+			jobC = consumer.jobC
+			touchTimer.Reset(job.TTR)
+
+		// Offer up the reserved job.
 		case jobC <- job:
 			jobC, offered = nil, true
 
-		// Regularly touch the reserved job to keep it reserved.
+		// Keep the job reserved by regularly touching it.
 		case <-touchTimer.C:
 			if err := consumer.Touch(job); err != nil {
-				job = nil
+				job, jobC = nil, nil
 				break
 			}
 
@@ -115,6 +166,7 @@ func (consumer *Consumer) jobManager() {
 		case req := <-consumer.finishJob:
 			if job == nil {
 				req.ret <- ErrJobLost
+				break
 			}
 
 			switch req.method {
@@ -127,45 +179,42 @@ func (consumer *Consumer) jobManager() {
 			}
 
 			job = nil
+			reserveJob()
 			touchTimer.Stop()
 
 		// Set up a new connection and watch the relevant tubes.
 		case conn := <-consumer.connCreatedC:
 			consumer.SetConnection(conn)
 
-			var err error
 			for _, tube := range consumer.tubes {
-				if err = consumer.Watch(tube); err != nil {
-					break
-				}
+				consumer.Watch(tube)
 			}
 
 			// Ignore the 'default' tube if it wasn't in the list of tubes to watch.
-			if err == nil && includesString(consumer.tubes, "default") {
+			if !includesString(consumer.tubes, "default") {
 				consumer.Ignore("default")
 			}
 
+			reserveJob()
+
 		// The connection was closed, so any reserved jobs are now useless.
 		case <-consumer.connClosedC:
-			touchTimer.Stop()
 			job, jobC = nil, nil
+			touchTimer.Stop()
 
-		// Fallthrough in case no job could be reserved, but a quick channel check
-		// is needed before trying another reserve request.
-		case <-fallThrough.C:
-
-		// Determine if this consumer should pause. If there is an unoffered job
-		// pending, release it back to the queue.
+		// Play or pause this consumer.
 		case paused = <-consumer.pause:
-			if paused && job != nil && !offered {
-				consumer.Release(job, job.Priority, time.Duration(0))
-				job, jobC = nil, nil
-				touchTimer.Stop()
+			if paused {
+				releaseJob()
+			} else {
+				reserveJob()
 			}
 
-		// Stop this goroutine from running.
+		// Closing the reserve channel tells jobReserver() to stop running.
 		case <-consumer.stop:
-			return
+			releaseJob()
+			paused = true
+			close(consumer.reserve)
 		}
 	}
 }
