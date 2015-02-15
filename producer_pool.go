@@ -4,7 +4,7 @@ import "time"
 
 type putToken struct {
 	Timer *time.Timer
-	C     chan Response
+	C     chan PutResponse
 }
 
 // ProducerPool maintains a pool of Producers with the purpose of spreading
@@ -30,7 +30,7 @@ func NewProducerPool(sockets []string, options *Options) *ProducerPool {
 		timer := time.NewTimer(time.Second)
 		timer.Stop()
 
-		pool.putTokens <- &putToken{Timer: timer, C: make(chan Response)}
+		pool.putTokens <- &putToken{Timer: timer, C: make(chan PutResponse)}
 	}
 
 	return pool
@@ -50,7 +50,7 @@ func (pool *ProducerPool) Put(tube string, body []byte, params *PutParams) (uint
 	token := <-pool.putTokens
 
 	// Create a Put object and set the request timer, if needed.
-	put := &Put{Tube: tube, Body: body, PutParams: params, Response: token.C}
+	put := &Put{Tube: tube, Body: body, Params: params, Response: token.C}
 	if pool.options.ReadWriteTimeout != 0 {
 		token.Timer.Reset(pool.options.ReadWriteTimeout)
 	}

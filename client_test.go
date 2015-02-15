@@ -135,7 +135,7 @@ func TestPut(t *testing.T) {
 	client := NewTestClient(t, "put 1024 0 10 11", "INSERTED 12345")
 	defer client.Close()
 
-	job := &Put{Body: []byte("Hello World"), Tube: "test", PutParams: &PutParams{1024, 0, time.Duration(10 * time.Second)}}
+	job := &Put{Body: []byte("Hello World"), Tube: "test", Params: &PutParams{1024, 0, time.Duration(10 * time.Second)}}
 
 	id, err := client.Put(job)
 	if err != nil {
@@ -150,7 +150,7 @@ func TestPutBuried(t *testing.T) {
 	client := NewTestClient(t, "put 1024 0 10 11", "BURIED 12345")
 	defer client.Close()
 
-	job := &Put{Body: []byte("Hello World"), Tube: "test", PutParams: &PutParams{1024, 0, time.Duration(10 * time.Second)}}
+	job := &Put{Body: []byte("Hello World"), Tube: "test", Params: &PutParams{1024, 0, time.Duration(10 * time.Second)}}
 
 	id, err := client.Put(job)
 	if err != ErrBuried {

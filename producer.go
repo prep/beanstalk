@@ -39,7 +39,7 @@ func (producer *Producer) connectionManager() {
 		case job := <-putCh:
 			if job.Tube != lastTube {
 				if err := producer.Use(job.Tube); err != nil {
-					job.Response <- Response{0, err}
+					job.Response <- PutResponse{0, err}
 					break
 				}
 
@@ -48,7 +48,7 @@ func (producer *Producer) connectionManager() {
 
 			// Insert the job into beanstalk and return the response.
 			id, err := producer.Put(job)
-			job.Response <- Response{id, err}
+			job.Response <- PutResponse{id, err}
 
 		// If a new connection was created, set it up here.
 		case conn := <-producer.connCreatedC:
