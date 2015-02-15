@@ -105,4 +105,5 @@ consumerPool := beanstalk.NewConsumerPool([]string{"127.0.0.1:11300"}, []string{
 
 License
 -------
-This software is licensed under [The BSD 2-Clause License](http://opensource.org/licenses/BSD-2-Clause). Copyright (c) 2015, MessageBird
+This software is created for MessageBird B.V. and licensed under [The ISC License](http://opensource.org/licenses/ISC). Copyright (c) 2015, Maurice Nonnekes <maurice@messagebird.com>.
+
