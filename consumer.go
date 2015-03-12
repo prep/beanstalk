@@ -97,33 +97,40 @@ func (consumer *Consumer) jobManager() {
 	consumer.OpenConnection()
 	defer consumer.CloseConnection()
 
-	// This channel is used as a programmable way to make the select-statement
-	// below non-blocking in similar way a default-case would.
-	dontWait := make(chan struct{}, 1)
-
 	// This timer is used to keep a reserved job alive.
 	touchTimer := time.NewTimer(time.Second)
 	touchTimer.Stop()
 
-	// releaseJob releases a job back to beanstalk.
+	// reserve is used to trigger a new reserve request in the select statement.
+	reserve := make(chan struct{}, 1)
+
+	// reserveJob queues a request for a new job reservation.
+	reserveJob := func() {
+		if consumer.isConnected && !paused && job == nil && len(reserve) == 0 {
+			reserve <- struct{}{}
+		}
+	}
+
+	// releaseJob returns a job back to beanstalk.
 	releaseJob := func() {
-		consumer.Release(job, job.Priority, 0)
-		job, jobC = nil, nil
-		touchTimer.Stop()
+		if job != nil {
+			consumer.Release(job, job.Priority, 0)
+			job, jobC = nil, nil
+			touchTimer.Stop()
+		}
 	}
 
 	for {
-		// Reserve a new job, if the state allows for it.
-		if consumer.isConnected && !paused && job == nil {
+		select {
+		// Reserve a new job.
+		case <-reserve:
 			if job, _ = consumer.Reserve(); job != nil {
 				jobC, job.Manager = consumer.jobC, consumer
 				touchTimer.Reset(job.TTR)
-			} else if len(dontWait) == 0 {
-				dontWait <- struct{}{}
+			} else {
+				reserveJob()
 			}
-		}
 
-		select {
 		// If a job was reserved, offer it up.
 		case jobC <- job:
 			jobC = nil
@@ -155,6 +162,7 @@ func (consumer *Consumer) jobManager() {
 			}
 
 			job = nil
+			reserveJob()
 			touchTimer.Stop()
 
 		// Set up a new connection.
@@ -169,6 +177,8 @@ func (consumer *Consumer) jobManager() {
 				consumer.Ignore("default")
 			}
 
+			reserveJob()
+
 		// The connection was closed, so any reserved jobs are now useless.
 		case <-consumer.connClosedC:
 			job, jobC = nil, nil
@@ -177,19 +187,16 @@ func (consumer *Consumer) jobManager() {
 		// Pause or unpause reservering new jobs.
 		case paused = <-consumer.pauseJobManager:
 			// If this job wasn't offered yet, quickly release it.
-			if paused && job != nil && jobC != nil {
+			if paused && jobC != nil {
 				releaseJob()
+			} else if !paused {
+				reserveJob()
 			}
 
 		// Stop this goroutine. Release the job, if one is pending.
 		case <-consumer.stopJobManager:
-			if job != nil {
-				releaseJob()
-			}
+			releaseJob()
 			return
-
-		// Don't let this select statement block when a job can be reserved.
-		case <-dontWait:
 		}
 	}
 }
