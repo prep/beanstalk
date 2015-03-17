@@ -36,7 +36,7 @@ func socketpair() (net.Conn, net.Conn, error) {
 }
 
 type TestClient struct {
-	Client
+	*Client
 	ServerConn *textproto.Conn
 }
 
@@ -47,15 +47,17 @@ func NewTestClient(t *testing.T, req, resp string) *TestClient {
 	}
 
 	client := &TestClient{Client: NewClient("127.0.0.1:11300", nil), ServerConn: textproto.NewConn(s2)}
-	client.SetConnection(s1)
+	client.conn, client.textConn = s1, textproto.NewConn(s1)
+
+	select {
+	case <-client.Connected:
+	case <-time.After(time.Second * 3):
+		client.Close()
+		panic("Unable to connect to the beanstalk server")
+	}
 
 	go client.ServerResponse(t, req, resp)
-
 	return client
-}
-
-func (tc *TestClient) Close() {
-	tc.Client.CloseConnection()
 }
 
 func (tc *TestClient) ServerResponse(t *testing.T, req, resp string) {

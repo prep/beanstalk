@@ -23,105 +23,103 @@ var (
 	ErrUnexpectedResp = errors.New("Unexpected response from server")
 )
 
-// Client is responsible for keeping up a client connection to a beanstalk
-// server. It advertises newly made connections on the _connCreatedC_ channel
-// and the closing of existing connections on the _connClosedC_ channel.
+// Client implements a simple beanstalk API that is responsible for maintaining
+// a connection to a beanstalk server. Connection status changes are advertised
+// on the Connected channel.
 type Client struct {
-	socket          string
-	options         *Options
-	connCreatedC    chan net.Conn
-	connClosedC     chan struct{}
-	abortNewConnect chan struct{}
+	// Connected updates the implementer about the status of the connection that
+	// this client maintains.
+	Connected <-chan bool
 
-	// The state variables.
-	c            net.Conn // Only used for Set*Deadline()
-	conn         *textproto.Conn
-	isConnecting bool
-	isConnected  bool
+	connected      chan bool     // A writeable version of Connected.
+	newConn        chan net.Conn // Advertise a successful reconnect.
+	abortReconnect chan struct{} // Abort a reconnect in progress.
+	isConnecting   bool          // True if a reconnect is in progress.
+
+	socket  string
+	options *Options
+
+	// These connection objects point to the same filedescriptor, but conn is
+	// used exclusively for the set*Deadline() calls and textConn for beanstalk
+	// protocol parsing.
+	conn     net.Conn
+	textConn *textproto.Conn
 }
 
-// NewClient creates a new beanstalk Client.
-func NewClient(socket string, options *Options) Client {
-	return Client{
-		socket:          socket,
-		options:         SanitizedOptions(options),
-		connCreatedC:    make(chan net.Conn),
-		connClosedC:     make(chan struct{}, 1),
-		abortNewConnect: make(chan struct{}, 1)}
+// NewClient returns a new beanstalk Client object.
+func NewClient(socket string, options *Options) *Client {
+	connected := make(chan bool, 1)
+
+	client := &Client{
+		Connected:      connected,
+		connected:      connected,
+		newConn:        make(chan net.Conn),
+		abortReconnect: make(chan struct{}, 1),
+		socket:         socket,
+		options:        SanitizedOptions(options)}
+	client.reconnect()
+
+	return client
 }
 
-// OpenConnection creates a new connection to the beanstalk server, unless an
-// attempt is already in progress. If a connection is already active, close it
-// in favor of setting up a new one.
-// A successful connection is reported via the _connCreatedC_ channel.
-func (client *Client) OpenConnection() {
+// reconnect to the beanstalk server.
+func (client *Client) reconnect() {
 	if client.isConnecting {
 		return
 	}
 
-	client.CloseConnection()
+	client.Close()
 	client.isConnecting = true
 
 	go func() {
-		var connCreatedC chan net.Conn
-
-		timeout := time.NewTimer(time.Second)
-		timeout.Stop()
+		retry := time.NewTimer(time.Second)
+		retry.Stop()
 
 		for {
-			conn, err := net.Dial("tcp", client.socket)
-			if err == nil {
-				connCreatedC = client.connCreatedC
-			} else {
-				timeout.Reset(client.options.ReconnectTimeout)
-			}
+			if conn, err := net.Dial("tcp", client.socket); err == nil {
+				client.connected <- true
 
-			select {
-			case connCreatedC <- conn:
-				return
-			case <-timeout.C:
-			case <-client.abortNewConnect:
-				if conn != nil {
+				// Offer up the new connection. If an abort comes in, close the new
+				// connection and clear out the Connected channel.
+				select {
+				case client.newConn <- conn:
+				case <-client.abortReconnect:
 					conn.Close()
+
+					select {
+					case <-client.Connected:
+					default:
+					}
 				}
 
-				timeout.Stop()
+				return
+			}
+
+			retry.Reset(client.options.ReconnectTimeout)
+
+			select {
+			case <-retry.C:
+			case <-client.abortReconnect:
+				retry.Stop()
 				return
 			}
 		}
 	}()
 }
 
-// CloseConnection closes the current connection. If an attempt to set up a
-// new connection in the background is happening, abort that.
-// A successful closure is reported via the _connClosedC_ channel.
-func (client *Client) CloseConnection() {
-	if client.conn != nil {
-		client.conn.Close()
-		client.c, client.conn = nil, nil
-
-		// Clear any previously sent close signal.
-		select {
-		case <-client.connClosedC:
-		default:
-		}
-
-		client.connClosedC <- struct{}{}
-	}
-
-	client.isConnected = false
-
+// Close the existing connection this client might have to a beanstalk server
+// and abort any reconnect in progress.
+func (client *Client) Close() {
 	if client.isConnecting {
-		client.abortNewConnect <- struct{}{}
+		client.abortReconnect <- struct{}{}
 		client.isConnecting = false
 	}
-}
 
-// SetConnection sets the specified connection as the active one. This should
-// be called after receiving a new net.Conn via the _connCreatedC_ channel.
-func (client *Client) SetConnection(conn net.Conn) {
-	client.isConnecting, client.isConnected = false, true
-	client.c, client.conn = conn, textproto.NewConn(conn)
+	if client.conn != nil {
+		client.conn.Close()
+		client.conn, client.textConn = nil, nil
+		client.connected <- false
+	}
 }
 
 // Bury a reserved job. This is done after being unable to process the job and
@@ -155,6 +153,7 @@ func (client *Client) Put(job *Put) (uint64, error) {
 		job.Params.TTR/time.Second,
 		len(job.Body),
 		job.Body)
+
 	return id, err
 }
 
@@ -174,8 +173,8 @@ func (client *Client) Reserve() (*Job, error) {
 
 	// Set a read deadline that is slightly longer than the reserve timeout.
 	if client.options.ReserveTimeout != 0 {
-		client.c.SetReadDeadline(time.Now().Add(client.options.ReserveTimeout + time.Second))
-		defer client.c.SetReadDeadline(time.Time{})
+		client.conn.SetReadDeadline(time.Now().Add(client.options.ReserveTimeout + time.Second))
+		defer client.conn.SetReadDeadline(time.Time{})
 	}
 
 	job := &Job{TTR: time.Second}
@@ -228,17 +227,25 @@ func (client *Client) Watch(tube string) error {
 
 // request sends a request to the beanstalk server.
 func (client *Client) request(format string, args ...interface{}) error {
-	if !client.isConnected {
-		return ErrNotConnected
+	// If there is no active connection, check to see if the reconnect()
+	// goroutine is offering up a new one.
+	if client.conn == nil {
+		select {
+		case client.conn = <-client.newConn:
+			client.isConnecting = false
+			client.textConn = textproto.NewConn(client.conn)
+		default:
+			return ErrNotConnected
+		}
 	}
 
 	if client.options.ReadWriteTimeout != 0 {
-		client.c.SetWriteDeadline(time.Now().Add(client.options.ReadWriteTimeout))
-		defer client.c.SetWriteDeadline(time.Time{})
+		client.conn.SetWriteDeadline(time.Now().Add(client.options.ReadWriteTimeout))
+		defer client.conn.SetWriteDeadline(time.Time{})
 	}
 
-	if err := client.conn.PrintfLine(format, args...); err != nil {
-		client.OpenConnection()
+	if err := client.textConn.PrintfLine(format, args...); err != nil {
+		client.reconnect()
 		return ErrNotConnected
 	}
 
@@ -247,9 +254,9 @@ func (client *Client) request(format string, args ...interface{}) error {
 
 // response reads and parses a response from the beanstalk server.
 func (client *Client) response() (uint64, []byte, error) {
-	line, err := client.conn.ReadLine()
+	line, err := client.textConn.ReadLine()
 	if err != nil {
-		client.OpenConnection()
+		client.reconnect()
 		return 0, nil, ErrNotConnected
 	}
 
@@ -290,7 +297,7 @@ func (client *Client) response() (uint64, []byte, error) {
 	case "OK":
 		if size, err := strconv.Atoi(rest); err == nil {
 			body := make([]byte, size+2)
-			if _, err := io.ReadFull(client.conn.R, body); err != nil {
+			if _, err := io.ReadFull(client.textConn.R, body); err != nil {
 				break
 			}
 
@@ -314,7 +321,7 @@ func (client *Client) response() (uint64, []byte, error) {
 		}
 
 		body := make([]byte, size+2)
-		if _, err := io.ReadFull(client.conn.R, body); err != nil {
+		if _, err := io.ReadFull(client.textConn.R, body); err != nil {
 			break
 		}
 
@@ -340,7 +347,7 @@ func (client *Client) response() (uint64, []byte, error) {
 		return 0, nil, ErrOutOfMemory
 	}
 
-	client.OpenConnection()
+	client.reconnect()
 	return 0, nil, ErrUnexpectedResp
 }
 
@@ -352,8 +359,8 @@ func (client *Client) requestResponse(format string, args ...interface{}) (uint6
 	}
 
 	if client.options.ReadWriteTimeout != 0 {
-		client.c.SetReadDeadline(time.Now().Add(client.options.ReadWriteTimeout))
-		defer client.c.SetReadDeadline(time.Time{})
+		client.conn.SetReadDeadline(time.Now().Add(client.options.ReadWriteTimeout))
+		defer client.conn.SetReadDeadline(time.Time{})
 	}
 
 	return client.response()
