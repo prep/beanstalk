@@ -46,7 +46,7 @@ func NewTestClient(t *testing.T, req, resp string) *TestClient {
 		panic("Unable to create socket pair: " + err.Error())
 	}
 
-	client := &TestClient{Client: NewClient("127.0.0.1:11300", nil), ServerConn: textproto.NewConn(s2)}
+	client := &TestClient{Client: NewClient("127.0.0.1:11300", DefaultOptions()), ServerConn: textproto.NewConn(s2)}
 	client.conn, client.textConn = s1, textproto.NewConn(s1)
 
 	select {

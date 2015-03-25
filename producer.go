@@ -8,13 +8,13 @@ type Producer struct {
 }
 
 // NewProducer returns a new Producer object.
-func NewProducer(socket string, putCh chan *Put, options *Options) *Producer {
+func NewProducer(socket string, putCh chan *Put, options Options) *Producer {
 	producer := &Producer{
 		putCh: putCh,
 		stop:  make(chan struct{}, 1),
 	}
 
-	go producer.jobManager(socket, options)
+	go producer.jobManager(socket, SanitizeOptions(options))
 	return producer
 }
 
@@ -25,7 +25,7 @@ func (producer *Producer) Stop() {
 
 // jobManager is responsible for accepting new put requests and inserting them
 // into beanstalk.
-func (producer *Producer) jobManager(socket string, options *Options) {
+func (producer *Producer) jobManager(socket string, options Options) {
 	var lastTube string
 	var putCh chan *Put
 	var isConnected = false

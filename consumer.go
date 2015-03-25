@@ -15,7 +15,7 @@ type Consumer struct {
 }
 
 // NewConsumer returns a new Consumer object.
-func NewConsumer(socket string, tubes []string, jobC chan<- *Job, options *Options) *Consumer {
+func NewConsumer(socket string, tubes []string, jobC chan<- *Job, options Options) *Consumer {
 	consumer := &Consumer{
 		tubes:             tubes,
 		jobC:              jobC,
@@ -27,7 +27,7 @@ func NewConsumer(socket string, tubes []string, jobC chan<- *Job, options *Optio
 	}
 
 	go consumer.controlManager()
-	go consumer.jobManager(socket, options)
+	go consumer.jobManager(socket, SanitizeOptions(options))
 
 	return consumer
 }
@@ -87,7 +87,7 @@ func (consumer *Consumer) FinalizeJob(job *Job, method JobMethod, priority uint3
 
 // jobManager is responsible for reserving beanstalk jobs and keeping those
 // jobs reserved until they're either buried, deleted or released.
-func (consumer *Consumer) jobManager(socket string, options *Options) {
+func (consumer *Consumer) jobManager(socket string, options Options) {
 	var job *Job
 	var jobC chan<- *Job
 	var paused, isConnected = true, false

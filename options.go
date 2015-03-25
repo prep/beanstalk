@@ -9,12 +9,16 @@ type Options struct {
 	ReadWriteTimeout time.Duration // The time to give request/response combo
 }
 
-// SanitizedOptions returns sane Options structure to work with.
-func SanitizedOptions(options *Options) *Options {
-	if options == nil {
-		return &Options{ReserveTimeout: time.Second, ReconnectTimeout: time.Second * 3}
+// DefaultOptions returns an Options object with default values.
+func DefaultOptions() Options {
+	return Options{
+		ReserveTimeout:   time.Second,
+		ReconnectTimeout: time.Second * 3,
 	}
+}
 
+// SanitizeOptions returns sane Options structure to work with.
+func SanitizeOptions(options Options) Options {
 	if options.ReserveTimeout < time.Second {
 		options.ReserveTimeout = time.Second
 	}

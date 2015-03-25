@@ -37,7 +37,7 @@ type Client struct {
 	isConnecting   bool          // True if a reconnect is in progress.
 
 	socket  string
-	options *Options
+	options Options
 
 	// These connection objects point to the same filedescriptor, but conn is
 	// used exclusively for the set*Deadline() calls and textConn for beanstalk
@@ -47,7 +47,7 @@ type Client struct {
 }
 
 // NewClient returns a new beanstalk Client object.
-func NewClient(socket string, options *Options) *Client {
+func NewClient(socket string, options Options) *Client {
 	connected := make(chan bool, 1)
 
 	client := &Client{
@@ -56,7 +56,7 @@ func NewClient(socket string, options *Options) *Client {
 		newConn:        make(chan net.Conn),
 		abortReconnect: make(chan struct{}, 1),
 		socket:         socket,
-		options:        SanitizedOptions(options)}
+		options:        SanitizeOptions(options)}
 	client.reconnect()
 
 	return client

@@ -13,12 +13,12 @@ type ProducerPool struct {
 	putCh     chan *Put
 	producers []*Producer
 	putTokens chan *putToken
-	options   *Options
+	options   Options
 }
 
 // NewProducerPool creates a pool of Producer objects.
-func NewProducerPool(sockets []string, options *Options) *ProducerPool {
-	pool := &ProducerPool{putCh: make(chan *Put), options: SanitizedOptions(options)}
+func NewProducerPool(sockets []string, options Options) *ProducerPool {
+	pool := &ProducerPool{putCh: make(chan *Put), options: SanitizeOptions(options)}
 	pool.putTokens = make(chan *putToken, len(sockets)*2)
 
 	for _, socket := range sockets {
