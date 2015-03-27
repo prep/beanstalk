@@ -77,6 +77,10 @@ func (client *Client) reconnect() {
 
 		for {
 			if conn, err := net.Dial("tcp", client.socket); err == nil {
+				client.options.LogInfo("New beanstalk connection to %s (local=%s)",
+					conn.RemoteAddr().String(),
+					conn.LocalAddr().String())
+
 				client.connected <- true
 
 				// Offer up the new connection. If an abort comes in, close the new
@@ -111,11 +115,16 @@ func (client *Client) reconnect() {
 // and abort any reconnect in progress.
 func (client *Client) Close() {
 	if client.isConnecting {
+		client.options.LogInfo("Aborting reconnect to beanstalk server")
 		client.abortReconnect <- struct{}{}
 		client.isConnecting = false
 	}
 
 	if client.conn != nil {
+		client.options.LogInfo("Closing connection to beanstalk server %s (local=%s)",
+			client.conn.RemoteAddr().String(),
+			client.conn.LocalAddr().String())
+
 		client.conn.Close()
 		client.conn, client.textConn = nil, nil
 		client.connected <- false
@@ -245,6 +254,7 @@ func (client *Client) request(format string, args ...interface{}) error {
 	}
 
 	if err := client.textConn.PrintfLine(format, args...); err != nil {
+		client.options.LogError("Unable to send request: %s. Reconnecting", err)
 		client.reconnect()
 		return ErrNotConnected
 	}
@@ -256,6 +266,7 @@ func (client *Client) request(format string, args ...interface{}) error {
 func (client *Client) response() (uint64, []byte, error) {
 	line, err := client.textConn.ReadLine()
 	if err != nil {
+		client.options.LogError("Unable to read response: %s. Reconnecting", err)
 		client.reconnect()
 		return 0, nil, ErrNotConnected
 	}
@@ -347,6 +358,7 @@ func (client *Client) response() (uint64, []byte, error) {
 		return 0, nil, ErrOutOfMemory
 	}
 
+	client.options.LogError("Unexpected response: %s. Reconnecting", response)
 	client.reconnect()
 	return 0, nil, ErrUnexpectedResp
 }

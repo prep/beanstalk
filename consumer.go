@@ -1,6 +1,9 @@
 package beanstalk
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // Consumer reserves jobs from a beanstalk server and keeps those jobs alive
 // until an external consumer has either buried, deleted or released it.
@@ -170,6 +173,8 @@ func (consumer *Consumer) jobManager(socket string, options Options) {
 				touchTimer.Stop()
 				break
 			}
+
+			client.options.LogInfo("Watching tubes: %s", strings.Join(consumer.tubes, ", "))
 
 			for _, tube := range consumer.tubes {
 				client.Watch(tube)
