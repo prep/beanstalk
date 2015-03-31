@@ -174,7 +174,7 @@ func (consumer *Consumer) jobManager(socket string, options Options) {
 				break
 			}
 
-			client.options.LogInfo("Watching tubes: %s", strings.Join(consumer.tubes, ", "))
+			options.LogInfo("Watching tubes: %s", strings.Join(consumer.tubes, ", "))
 
 			for _, tube := range consumer.tubes {
 				client.Watch(tube)
