@@ -8,198 +8,179 @@ import (
 // Consumer reserves jobs from a beanstalk server and keeps those jobs alive
 // until an external consumer has either buried, deleted or released it.
 type Consumer struct {
-	tubes             []string
-	jobC              chan<- *Job
-	finalizeJob       chan *finalizeJob
-	pause             chan bool
-	pauseReservations chan bool
-	stop              chan struct{}
-	stopJobManager    chan struct{}
+	tubes []string
+	jobC  chan<- *Job
+	pause chan bool
+	stop  chan struct{}
 }
 
 // NewConsumer returns a new Consumer object.
 func NewConsumer(socket string, tubes []string, jobC chan<- *Job, options Options) *Consumer {
 	consumer := &Consumer{
-		tubes:             tubes,
-		jobC:              jobC,
-		finalizeJob:       make(chan *finalizeJob),
-		pause:             make(chan bool, 1),
-		pauseReservations: make(chan bool),
-		stop:              make(chan struct{}, 1),
-		stopJobManager:    make(chan struct{}),
+		tubes: tubes,
+		jobC:  jobC,
+		pause: make(chan bool, 1),
+		stop:  make(chan struct{}, 1),
 	}
 
-	go consumer.controlManager()
-	go consumer.jobManager(socket, SanitizeOptions(options))
-
+	go consumer.manager(socket, SanitizeOptions(options))
 	return consumer
 }
 
 // Play allows this consumer to start reserving jobs.
 func (consumer *Consumer) Play() {
+	select {
+	case <-consumer.pause:
+	default:
+	}
+
 	consumer.pause <- false
 }
 
 // Pause stops this consumer from reserving jobs.
 func (consumer *Consumer) Pause() {
+	select {
+	case <-consumer.pause:
+	default:
+	}
+
 	consumer.pause <- true
 }
 
-// Stop this consumer running.
+// Stop this consumer.
 func (consumer *Consumer) Stop() {
 	consumer.stop <- struct{}{}
 }
 
-// controlManager deals with the state changes issued from the Play(), Pause()
-// and Stop() functions.
-func (consumer *Consumer) controlManager() {
-	var paused bool
-	var pauseReservations chan bool
-	var stopJobManager chan struct{}
-
-	for {
-		select {
-		case paused = <-consumer.pause:
-			pauseReservations = consumer.pauseReservations
-		case <-consumer.stop:
-			stopJobManager = consumer.stopJobManager
-
-		case pauseReservations <- paused:
-			pauseReservations = nil
-		case stopJobManager <- struct{}{}:
-			return
-		}
-	}
-}
-
-type finalizeJob struct {
-	job      *Job
-	method   JobMethod
-	ret      chan error
-	priority uint32
-	delay    time.Duration
-}
-
-// FinalizeJob is an interface function for Job that gets called whenever it is
-// decided to finalize the job by either burying, deleting or releasing it.
-func (consumer *Consumer) FinalizeJob(job *Job, method JobMethod, priority uint32, delay time.Duration) error {
-	fJob := &finalizeJob{job: job, method: method, ret: make(chan error), priority: priority, delay: delay}
-	consumer.finalizeJob <- fJob
-	return <-fJob.ret
-}
-
-// jobManager is responsible for reserving beanstalk jobs and keeping those
-// jobs reserved until they're either buried, deleted or released.
-func (consumer *Consumer) jobManager(socket string, options Options) {
+// manager takes care of reserving, touching and bury/delete/release-ing of
+// beanstalk jobs.
+func (consumer *Consumer) manager(socket string, options Options) {
+	var client *Client
 	var job *Job
-	var jobC chan<- *Job
-	var paused, isConnected = true, false
+	var jobOffer chan<- *Job
+	var err error
+	var isPaused = true
 
-	client := NewClient(socket, options)
-	defer client.Close()
+	// Set up a new connection.
+	newConnection, abortConnect := Connect(socket, options)
 
 	// This timer is used to keep a reserved job alive.
 	touchTimer := time.NewTimer(time.Second)
 	touchTimer.Stop()
 
-	// reserve is used to trigger a new reserve request in the select statement.
-	reserve := make(chan struct{}, 1)
+	// The channel to receive requests for finishing jobs on.
+	finishJob := make(chan *JobCommand)
 
-	// reserveJob queues a request for a new job reservation.
-	reserveJob := func() {
-		if isConnected && !paused && job == nil && len(reserve) == 0 {
-			reserve <- struct{}{}
+	// Close the client and reconnect.
+	reconnect := func() {
+		options.LogInfo("RECONNECTING!")
+		if client != nil {
+			client.Close()
+			client, job, jobOffer = nil, nil, nil
+			newConnection, abortConnect = Connect(socket, options)
 		}
 	}
 
 	// releaseJob returns a job back to beanstalk.
 	releaseJob := func() {
-		if isConnected && job != nil {
+		if client != nil && job != nil {
 			client.Release(job, job.Priority, 0)
-			job, jobC = nil, nil
+			job, jobOffer = nil, nil
 			touchTimer.Stop()
 		}
 	}
 
 	for {
-		select {
-		// Reserve a new job.
-		case <-reserve:
-			if job, _ = client.Reserve(); job != nil {
-				jobC, job.Manager = consumer.jobC, consumer
+		// Reserve a new job, if the state allows it.
+		if !isPaused && client != nil && job == nil {
+			if job, err = client.Reserve(); err != nil {
+				options.LogError("Error reserving job: %s", err)
+				reconnect()
+			} else if job != nil {
+				jobOffer, job.Finish = consumer.jobC, finishJob
 				touchTimer.Reset(job.TTR)
-			} else {
-				reserveJob()
+			}
+		}
+
+		select {
+		// Set up a new beanstalk client connection and watch the tubes.
+		case conn := <-newConnection:
+			client, abortConnect = NewClient(conn, options), nil
+
+			options.LogInfo("Watching tubes: %s", strings.Join(consumer.tubes, ", "))
+			for _, tube := range consumer.tubes {
+				if err = client.Watch(tube); err != nil {
+					options.LogError("Error watching tube: %s", err)
+					reconnect()
+					break
+				}
 			}
 
-		// If a job was reserved, offer it up.
-		case jobC <- job:
-			jobC = nil
+			if err == nil && !includesString(consumer.tubes, "default") {
+				if err = client.Ignore("default"); err != nil {
+					options.LogError("Error ignoring tube: %s", err)
+					reconnect()
+				}
+			}
 
-		// Touch the reserved job at a regular interval to keep it reserved.
+		// Offer the job up on the shared jobs channel.
+		case jobOffer <- job:
+			jobOffer = nil
+
+		// Regularly touch a job to keep it reserved.
 		case <-touchTimer.C:
-			if err := client.Touch(job); err != nil {
-				job, jobC = nil, nil
+			if err = client.Touch(job); err != nil {
+				options.LogError("Error touching job: %s", err)
+				job, jobOffer = nil, nil
 				break
 			}
 
 			touchTimer.Reset(job.TTR)
 
-		// Bury, delete or release the reserved job.
-		case req := <-consumer.finalizeJob:
-			if req.job != job {
-				// This can happen if a disconnect occured before a job was finalized.
-				req.ret <- ErrNotFound
+		// Bury, delete or release a reserved job.
+		case finish := <-finishJob:
+			if job != finish.Job {
+				finish.Err <- ErrNotFound
 				break
 			}
 
-			switch req.method {
-			case BuryJob:
-				req.ret <- client.Bury(req.job, req.priority)
-			case DeleteJob:
-				req.ret <- client.Delete(req.job)
-			case ReleaseJob:
-				req.ret <- client.Release(req.job, req.priority, req.delay)
+			touchTimer.Stop()
+
+			switch finish.Command {
+			case Bury:
+				err = client.Bury(finish.Job, finish.Priority)
+			case Delete:
+				err = client.Delete(finish.Job)
+			case Release:
+				err = client.Release(finish.Job, finish.Priority, finish.Delay)
+			}
+
+			if err != nil {
+				options.LogError("Error finishing job: %s", err)
+				reconnect()
 			}
 
 			job = nil
-			reserveJob()
-			touchTimer.Stop()
+			finish.Err <- err
 
-		case isConnected = <-client.Connected:
-			if !isConnected {
-				// The connection was closed, so any reserved jobs are now useless.
-				isConnected, job, jobC = false, nil, nil
-				touchTimer.Stop()
-				break
-			}
-
-			options.LogInfo("Watching tubes: %s", strings.Join(consumer.tubes, ", "))
-
-			for _, tube := range consumer.tubes {
-				client.Watch(tube)
-			}
-
-			// Ignore the 'default' tube if it wasn't in the list of tubes to watch.
-			if !includesString(consumer.tubes, "default") {
-				client.Ignore("default")
-			}
-
-			reserveJob()
-
-		// Pause or unpause the reservation of new jobs.
-		case paused = <-consumer.pauseReservations:
-			if paused && jobC != nil {
-				// If this job wasn't offered yet, quickly release it.
+		// Pause or unpause the action of reserving new jobs.
+		case isPaused = <-consumer.pause:
+			if isPaused && jobOffer != nil {
 				releaseJob()
-			} else if !paused {
-				// If Play() was called, issue a new reservation request.
-				reserveJob()
 			}
 
-		// Stop this goroutine, but first: release the reserved job, if present.
-		case <-consumer.stopJobManager:
+		// Stop this consumer from running.
+		case <-consumer.stop:
 			releaseJob()
+
+			if client != nil {
+				client.Close()
+			}
+
+			if abortConnect != nil {
+				abortConnect <- struct{}{}
+			}
+
 			return
 		}
 	}

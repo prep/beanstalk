@@ -8,6 +8,7 @@ import (
 // DefaultOptions returns an Options object with default values.
 func DefaultOptions() Options {
 	return Options{
+		ReserveWindow:    1,
 		ReserveTimeout:   time.Second,
 		ReconnectTimeout: time.Second * 3,
 	}
@@ -15,6 +16,10 @@ func DefaultOptions() Options {
 
 // SanitizeOptions returns sane Options structure to work with.
 func SanitizeOptions(options Options) Options {
+	if options.ReserveWindow < 1 {
+		options.ReserveWindow = 1
+	}
+
 	if options.ReserveTimeout < time.Second {
 		options.ReserveTimeout = time.Second
 	}
@@ -32,13 +37,31 @@ func SanitizeOptions(options Options) Options {
 
 // Options define the configurable parts of the Client, Consumers and Producers.
 type Options struct {
-	ReserveTimeout   time.Duration
-	ReconnectTimeout time.Duration // The time to wait until the next reconnect
-	ReadWriteTimeout time.Duration // The time to give request/response combo
+	// ReserveWindow defines how many reserved jobs a single Consumer object
+	// is allowed to have.
+	ReserveWindow int
 
-	LogPrefix string      // A prefix to every line being written to the loggers
-	InfoLog   *log.Logger // The logger for normal information
-	ErrorLog  *log.Logger // The logger for errors
+	// ReserveTimeout is the maximum amount of time (in seconds) a reserve call
+	// is allowed to block.
+	ReserveTimeout time.Duration
+
+	// ReconnectTimeout is the time to wait between reconnect attempts.
+	ReconnectTimeout time.Duration
+
+	// ReadWriteTimeout is the time a read or write operation on the beanstalk
+	// socket is given before it should unblock.
+	ReadWriteTimeout time.Duration
+
+	// LogPrefix is a string that gets prepending to every line that is written
+	// to the loggers.
+	LogPrefix string
+
+	// status updates and the like.
+	InfoLog *log.Logger
+
+	// ErrorLog is an optional logger for error messages, like read/write errors
+	// and unexpected responses.
+	ErrorLog *log.Logger
 }
 
 // LogInfo writes a log message to the InfoLog logger, if it was set.

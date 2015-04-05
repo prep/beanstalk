@@ -46,17 +46,9 @@ func NewTestClient(t *testing.T, req, resp string) *TestClient {
 		panic("Unable to create socket pair: " + err.Error())
 	}
 
-	client := &TestClient{Client: NewClient("127.0.0.1:11300", DefaultOptions()), ServerConn: textproto.NewConn(s2)}
-	client.conn, client.textConn = s1, textproto.NewConn(s1)
-
-	select {
-	case <-client.Connected:
-	case <-time.After(time.Second * 3):
-		client.Close()
-		panic("Unable to connect to the beanstalk server")
-	}
-
+	client := &TestClient{Client: NewClient(s1, DefaultOptions()), ServerConn: textproto.NewConn(s2)}
 	go client.ServerResponse(t, req, resp)
+
 	return client
 }
 

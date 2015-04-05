@@ -14,24 +14,33 @@ func NewProducer(socket string, putCh chan *Put, options Options) *Producer {
 		stop:  make(chan struct{}, 1),
 	}
 
-	go producer.jobManager(socket, SanitizeOptions(options))
+	go producer.manager(socket, SanitizeOptions(options))
 	return producer
 }
 
-// Stop this producer running.
+// Stop this producer.
 func (producer *Producer) Stop() {
 	producer.stop <- struct{}{}
 }
 
-// jobManager is responsible for accepting new put requests and inserting them
+// manager is responsible for accepting new put requests and inserting them
 // into beanstalk.
-func (producer *Producer) jobManager(socket string, options Options) {
+func (producer *Producer) manager(socket string, options Options) {
+	var client *Client
 	var lastTube string
 	var putCh chan *Put
-	var isConnected = false
 
-	client := NewClient(socket, options)
-	defer client.Close()
+	// Set up a new connection.
+	newConnection, abortConnect := Connect(socket, options)
+
+	// Close the client and reconnect.
+	reconnect := func() {
+		if client != nil {
+			client.Close()
+			client, putCh, lastTube = nil, nil, ""
+			newConnection, abortConnect = Connect(socket, options)
+		}
+	}
 
 	for {
 		select {
@@ -40,6 +49,8 @@ func (producer *Producer) jobManager(socket string, options Options) {
 			if job.Tube != lastTube {
 				if err := client.Use(job.Tube); err != nil {
 					job.Response <- PutResponse{0, err}
+					options.LogError("Error using tube '%s': %s", job.Tube, err)
+					reconnect()
 					break
 				}
 
@@ -48,18 +59,27 @@ func (producer *Producer) jobManager(socket string, options Options) {
 
 			// Insert the job into beanstalk and return the response.
 			id, err := client.Put(job)
+			if err != nil {
+				options.LogError("Error putting job: %s", err)
+				reconnect()
+			}
+
 			job.Response <- PutResponse{id, err}
 
-		case isConnected = <-client.Connected:
-			lastTube = ""
-			if isConnected {
-				putCh = producer.putCh
-			} else {
-				putCh = nil
-			}
+		case conn := <-newConnection:
+			client, abortConnect = NewClient(conn, options), nil
+			putCh = producer.putCh
 
 		// Close the connection and stop this goroutine from running.
 		case <-producer.stop:
+			if client != nil {
+				client.Close()
+			}
+
+			if abortConnect != nil {
+				abortConnect <- struct{}{}
+			}
+
 			return
 		}
 	}

@@ -5,18 +5,19 @@ import (
 	"time"
 )
 
-type TestConsumer struct{}
-
-func (tc *TestConsumer) FinalizeJob(job *Job, method JobMethod, priority uint32, delay time.Duration) error {
-	return nil
-}
-
 func NewTestJob() *Job {
+	finishJob := make(chan *JobCommand)
+	go func() {
+		finish := <-finishJob
+		finish.Err <- nil
+	}()
+
 	return &Job{
-		ID:      12345,
-		Body:    []byte("Hello World"),
-		TTR:     time.Duration(1),
-		Manager: &TestConsumer{}}
+		ID:     12345,
+		Body:   []byte("Hello World"),
+		TTR:    time.Duration(1),
+		Finish: finishJob,
+	}
 }
 
 func TestBuryJob(t *testing.T) {
@@ -59,8 +60,8 @@ func TestDoubleFinalizeJob(t *testing.T) {
 	if err := job.Delete(); err != nil {
 		t.Fatalf("Unexpected error from Delete: %s", err)
 	}
-	if err := job.Delete(); err != ErrJobFinalized {
-		t.Fatalf("Expected ErrJobFinalized, but got: %s", err)
+	if err := job.Delete(); err != ErrJobFinished {
+		t.Fatalf("Expected ErrJobFinished, but got: %s", err)
 	}
 
 }
