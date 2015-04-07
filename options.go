@@ -28,10 +28,6 @@ func SanitizeOptions(options Options) Options {
 		options.ReconnectTimeout = time.Second
 	}
 
-	if options.ReadWriteTimeout != 0 && options.ReadWriteTimeout < time.Millisecond {
-		options.ReadWriteTimeout = time.Millisecond
-	}
-
 	return options
 }
 
@@ -53,7 +49,8 @@ type Options struct {
 	ReadWriteTimeout time.Duration
 
 	// LogPrefix is a string that gets prepending to every line that is written
-	// to the loggers.
+	// to the loggers, which suits a special use case by the author. Most people
+	// will probably want to use the prefix parameter of log.New().
 	LogPrefix string
 
 	// status updates and the like.
