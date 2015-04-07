@@ -75,13 +75,13 @@ func (client *Client) Ignore(tube string) error {
 }
 
 // Put a new job into beanstalk.
-func (client *Client) Put(job *Put) (uint64, error) {
+func (client *Client) Put(putRequest *PutRequest) (uint64, error) {
 	id, _, err := client.requestResponse("put %d %d %d %d\r\n%s",
-		job.Params.Priority,
-		job.Params.Delay/time.Second,
-		job.Params.TTR/time.Second,
-		len(job.Body),
-		job.Body)
+		putRequest.Params.Priority,
+		putRequest.Params.Delay/time.Second,
+		putRequest.Params.TTR/time.Second,
+		len(putRequest.Body),
+		putRequest.Body)
 
 	return id, err
 }
