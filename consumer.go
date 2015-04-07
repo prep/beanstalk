@@ -73,10 +73,10 @@ func (consumer *Consumer) manager(socket string, options Options) {
 
 	// Close the client and reconnect.
 	reconnect := func() {
-		options.LogInfo("RECONNECTING!")
 		if client != nil {
 			client.Close()
 			client, job, jobOffer = nil, nil, nil
+			options.LogInfo("Consumer connection closed. Reconnecting")
 			newConnection, abortConnect = Connect(socket, options)
 		}
 	}
@@ -94,7 +94,7 @@ func (consumer *Consumer) manager(socket string, options Options) {
 		// Reserve a new job, if the state allows it.
 		if !isPaused && client != nil && job == nil {
 			if job, err = client.Reserve(); err != nil {
-				options.LogError("Error reserving job: %s", err)
+				options.LogError("Unable to reserve job: %s", err)
 				reconnect()
 			} else if job != nil {
 				jobOffer, job.Finish = consumer.jobC, finishJob
@@ -118,7 +118,7 @@ func (consumer *Consumer) manager(socket string, options Options) {
 
 			if err == nil && !includesString(consumer.tubes, "default") {
 				if err = client.Ignore("default"); err != nil {
-					options.LogError("Error ignoring tube: %s", err)
+					options.LogError("Unable to ignore tube: %s", err)
 					reconnect()
 				}
 			}
@@ -130,7 +130,7 @@ func (consumer *Consumer) manager(socket string, options Options) {
 		// Regularly touch a job to keep it reserved.
 		case <-touchTimer.C:
 			if err = client.Touch(job); err != nil {
-				options.LogError("Error touching job: %s", err)
+				options.LogError("Unable to touch job: %s", err)
 				job, jobOffer = nil, nil
 				break
 			}
@@ -156,7 +156,7 @@ func (consumer *Consumer) manager(socket string, options Options) {
 			}
 
 			if err != nil {
-				options.LogError("Error finishing job: %s", err)
+				options.LogError("Unable to finish job: %s", err)
 				reconnect()
 			}
 

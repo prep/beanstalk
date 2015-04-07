@@ -4,9 +4,9 @@ package beanstalk
 // incoming Put requests over the maintained Producers.
 type ProducerPool struct {
 	producers []*Producer
+	options   Options
 	putC      chan *Put
 	putTokens chan *Put
-	options   Options
 }
 
 // NewProducerPool creates a pool of Producer objects.
@@ -16,7 +16,7 @@ func NewProducerPool(sockets []string, options Options) *ProducerPool {
 
 	for _, socket := range sockets {
 		pool.producers = append(pool.producers, NewProducer(socket, pool.putC, options))
-		pool.putTokens <- NewPut(pool.putC)
+		pool.putTokens <- NewPut(pool.putC, options)
 	}
 
 	return pool
@@ -33,9 +33,7 @@ func (pool *ProducerPool) Stop() {
 // Put inserts a new job into beanstalk.
 func (pool *ProducerPool) Put(tube string, body []byte, params *PutParams) (uint64, error) {
 	put := <-pool.putTokens
-	put.SendRequest(tube, body, params)
-
-	id, err := put.ReceiveResponse()
+	id, err := put.Request(tube, body, params)
 	pool.putTokens <- put
 
 	return id, err

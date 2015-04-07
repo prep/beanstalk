@@ -38,6 +38,7 @@ func (producer *Producer) manager(socket string, options Options) {
 		if client != nil {
 			client.Close()
 			client, putC, lastTube = nil, nil, ""
+			options.LogInfo("Producer connection closed. Reconnecting")
 			newConnection, abortConnect = Connect(socket, options)
 		}
 	}
@@ -50,8 +51,8 @@ func (producer *Producer) manager(socket string, options Options) {
 
 			if request.Tube != lastTube {
 				if err := client.Use(request.Tube); err != nil {
-					put.SendResponse(0, err)
-					options.LogError("Error using tube '%s': %s", request.Tube, err)
+					put.Response(0, err)
+					options.LogError("Unable to use tube '%s': %s", request.Tube, err)
 					reconnect()
 					break
 				}
@@ -62,11 +63,11 @@ func (producer *Producer) manager(socket string, options Options) {
 			// Insert the job into beanstalk and return the response.
 			id, err := client.Put(request)
 			if err != nil {
-				options.LogError("Error putting job: %s", err)
+				options.LogError("Unable to put job into beanstalk: %s", err)
 				reconnect()
 			}
 
-			put.SendResponse(id, err)
+			put.Response(id, err)
 
 		case conn := <-newConnection:
 			client, abortConnect = NewClient(conn, options), nil

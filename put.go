@@ -8,34 +8,50 @@ import "time"
 type Put struct {
 	request  PutRequest
 	response PutResponse
+	timer    *time.Timer
+	options  Options
 	putC     chan<- *Put
 	respC    chan struct{}
 }
 
 // NewPut returns a new Put object that operates on the specified producer
 // channel.
-func NewPut(putC chan<- *Put) *Put {
-	return &Put{putC: putC, respC: make(chan struct{})}
+func NewPut(putC chan<- *Put, options Options) *Put {
+	timer := time.NewTimer(time.Second)
+	timer.Stop()
+
+	return &Put{
+		timer:   timer,
+		options: SanitizeOptions(options),
+		putC:    putC,
+		respC:   make(chan struct{})}
 }
 
-// SendRequest sends a put request to a producer.
-func (put *Put) SendRequest(tube string, body []byte, params *PutParams) {
-	put.request.Tube = tube
-	put.request.Body = body
-	put.request.Params = params
-	put.putC <- put
-}
+// Request sends a put request to an available Producer. This function uses the
+// ReadWriteTimeout field from Options{} to limit the time to wait for an
+// available producer before it returns ErrNotConnected.
+func (put *Put) Request(tube string, body []byte, params *PutParams) (ID uint64, err error) {
+	put.request.Tube, put.request.Body, put.request.Params = tube, body, params
+	if put.options.ReadWriteTimeout != 0 {
+		put.timer.Reset(put.options.ReadWriteTimeout)
+	}
 
-// SendResponse sends a put response back from a producer.
-func (put *Put) SendResponse(ID uint64, err error) {
-	put.response.ID, put.response.Err = ID, err
-	put.respC <- struct{}{}
-}
+	select {
+	case put.putC <- put:
+		put.timer.Stop()
+	case <-put.timer.C:
+		put.options.LogError("Unable to find a producer. Timeout was reached")
+		return 0, ErrNotConnected
+	}
 
-// ReceiveResponse returns parameters set by the producer.
-func (put *Put) ReceiveResponse() (uint64, error) {
 	<-put.respC
 	return put.response.ID, put.response.Err
+}
+
+// Response sends a put response back. This function is called from a producer.
+func (put *Put) Response(ID uint64, err error) {
+	put.response.ID, put.response.Err = ID, err
+	put.respC <- struct{}{}
 }
 
 // PutRequest describes a put request.
