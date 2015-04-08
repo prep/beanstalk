@@ -65,7 +65,9 @@ func (consumer *Consumer) manager(socket string, options Options) {
 	newConnection, abortConnect := Connect(socket, options)
 
 	// Close the client and reconnect.
-	reconnect := func() {
+	reconnect := func(format string, a ...interface{}) {
+		options.LogError(format, a...)
+
 		if client != nil {
 			client.Close()
 			client, job, jobOffer = nil, nil, nil
@@ -111,8 +113,7 @@ func (consumer *Consumer) manager(socket string, options Options) {
 
 			// Try to reserve a new job.
 			if job, err = client.Reserve(); err != nil {
-				options.LogError("Unable to reserve job: %s", err)
-				reconnect()
+				reconnect("Unable to reserve job: %s", err)
 			} else if job != nil {
 				jobOffer, job.Finish = consumer.jobC, finishJob
 				touchTimer.Reset(job.TTR)
@@ -129,16 +130,14 @@ func (consumer *Consumer) manager(socket string, options Options) {
 			options.LogInfo("Watching tubes: %s", strings.Join(consumer.tubes, ", "))
 			for _, tube := range consumer.tubes {
 				if err = client.Watch(tube); err != nil {
-					options.LogError("Error watching tube: %s", err)
-					reconnect()
+					reconnect("Error watching tube: %s", err)
 					break
 				}
 			}
 
 			if err == nil && !includesString(consumer.tubes, "default") {
 				if err = client.Ignore("default"); err != nil {
-					options.LogError("Unable to ignore tube: %s", err)
-					reconnect()
+					reconnect("Unable to ignore tube: %s", err)
 				}
 			}
 
@@ -149,7 +148,7 @@ func (consumer *Consumer) manager(socket string, options Options) {
 		// Regularly touch a job to keep it reserved.
 		case <-touchTimer.C:
 			if err = client.Touch(job); err != nil {
-				options.LogError("Unable to touch job: %s", err)
+				reconnect("Unable to touch job: %s", err)
 				job, jobOffer = nil, nil
 				break
 			}
@@ -175,8 +174,7 @@ func (consumer *Consumer) manager(socket string, options Options) {
 			}
 
 			if err != nil {
-				options.LogError("Unable to finish job: %s", err)
-				reconnect()
+				reconnect("Unable to finish job: %s", err)
 			}
 
 			job = nil
