@@ -64,13 +64,6 @@ func (consumer *Consumer) manager(socket string, options Options) {
 	// Set up a new connection.
 	newConnection, abortConnect := Connect(socket, options)
 
-	// This timer is used to keep a reserved job alive.
-	touchTimer := time.NewTimer(time.Second)
-	touchTimer.Stop()
-
-	// The channel to receive requests for finishing jobs on.
-	finishJob := make(chan *JobCommand)
-
 	// Close the client and reconnect.
 	reconnect := func() {
 		if client != nil {
@@ -81,6 +74,10 @@ func (consumer *Consumer) manager(socket string, options Options) {
 		}
 	}
 
+	// This timer is used to keep a reserved job alive.
+	touchTimer := time.NewTimer(time.Second)
+	touchTimer.Stop()
+
 	// releaseJob returns a job back to beanstalk.
 	releaseJob := func() {
 		if client != nil && job != nil {
@@ -90,15 +87,37 @@ func (consumer *Consumer) manager(socket string, options Options) {
 		}
 	}
 
+	// The channel to receive requests for finishing jobs on.
+	finishJob := make(chan *JobCommand)
+
 	for {
-		// Reserve a new job, if the state allows it.
+		// Reserve a new job, if the state allows for it.
 		if !isPaused && client != nil && job == nil {
+			select {
+			// A job wanting to finish at this stage is never successful.
+			case finish := <-finishJob:
+				finish.Err <- ErrNotFound
+				continue
+
+			case isPaused = <-consumer.pause:
+				continue
+
+			case <-consumer.stop:
+				client.Close()
+				return
+
+			default:
+			}
+
+			// Try to reserve a new job.
 			if job, err = client.Reserve(); err != nil {
 				options.LogError("Unable to reserve job: %s", err)
 				reconnect()
 			} else if job != nil {
 				jobOffer, job.Finish = consumer.jobC, finishJob
 				touchTimer.Reset(job.TTR)
+			} else {
+				continue
 			}
 		}
 
