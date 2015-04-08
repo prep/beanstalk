@@ -12,15 +12,16 @@ import (
 
 // Errors that can be returned by the beanstalk client functions.
 var (
-	ErrBuried         = errors.New("Job is buried")
-	ErrDraining       = errors.New("Server in draining mode")
-	ErrExpectedCRLF   = errors.New("Expected CRLF after job body")
-	ErrJobTooBig      = errors.New("Job body too big")
-	ErrNotConnected   = errors.New("Not connected")
-	ErrNotFound       = errors.New("Job not found")
-	ErrNotIgnored     = errors.New("Tube cannot be ignored")
-	ErrOutOfMemory    = errors.New("Server is out of memory")
-	ErrUnexpectedResp = errors.New("Unexpected response from server")
+	ErrBuried           = errors.New("Job is buried")
+	ErrConnectionClosed = errors.New("Remote end closed connection")
+	ErrDraining         = errors.New("Server in draining mode")
+	ErrExpectedCRLF     = errors.New("Expected CRLF after job body")
+	ErrJobTooBig        = errors.New("Job body too big")
+	ErrNotConnected     = errors.New("Not connected")
+	ErrNotFound         = errors.New("Job not found")
+	ErrNotIgnored       = errors.New("Tube cannot be ignored")
+	ErrOutOfMemory      = errors.New("Server is out of memory")
+	ErrUnexpectedResp   = errors.New("Unexpected response from server")
 )
 
 // Client implements a simple beanstalk API.
@@ -162,6 +163,9 @@ func (client *Client) request(format string, args ...interface{}) error {
 	}
 
 	if err := client.textConn.PrintfLine(format, args...); err != nil {
+		if err == io.EOF {
+			return ErrConnectionClosed
+		}
 		return err
 	}
 
@@ -172,6 +176,9 @@ func (client *Client) request(format string, args ...interface{}) error {
 func (client *Client) response() (uint64, []byte, error) {
 	line, err := client.textConn.ReadLine()
 	if err != nil {
+		if err == io.EOF {
+			return 0, nil, ErrConnectionClosed
+		}
 		return 0, nil, err
 	}
 
