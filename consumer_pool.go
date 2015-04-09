@@ -1,9 +1,12 @@
 package beanstalk
 
+import "sync"
+
 // ConsumerPool maintains a pool of Consumer objects.
 type ConsumerPool struct {
 	C         chan *Job
 	consumers []*Consumer
+	sync.Mutex
 }
 
 // NewConsumerPool creates a pool of Consumer objects.
@@ -19,14 +22,21 @@ func NewConsumerPool(sockets []string, tubes []string, options Options) *Consume
 
 // Stop shuts down all the consumers in the pool.
 func (pool *ConsumerPool) Stop() {
+	pool.Lock()
+	defer pool.Unlock()
+
 	for i, consumer := range pool.consumers {
 		consumer.Stop()
 		pool.consumers[i] = nil
 	}
+	pool.consumers = []*Consumer{}
 }
 
 // Play tells all the consumers to start reservering jobs.
 func (pool *ConsumerPool) Play() {
+	pool.Lock()
+	defer pool.Unlock()
+
 	for _, consumer := range pool.consumers {
 		consumer.Play()
 	}
@@ -34,6 +44,9 @@ func (pool *ConsumerPool) Play() {
 
 // Pause tells all the consumer to stop reservering jobs.
 func (pool *ConsumerPool) Pause() {
+	pool.Lock()
+	defer pool.Unlock()
+
 	for _, consumer := range pool.consumers {
 		consumer.Pause()
 	}

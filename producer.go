@@ -1,10 +1,14 @@
 package beanstalk
 
+import "sync"
+
 // Producer puts the jobs it receives on its channel into beanstalk.
 type Producer struct {
-	client *Client
-	putC   chan *Put
-	stop   chan struct{}
+	client    *Client
+	putC      chan *Put
+	stop      chan struct{}
+	isStopped bool
+	sync.Mutex
 }
 
 // NewProducer returns a new Producer object.
@@ -18,9 +22,19 @@ func NewProducer(socket string, putC chan *Put, options Options) *Producer {
 	return producer
 }
 
-// Stop this producer.
-func (producer *Producer) Stop() {
+// Stop this producer. Return true on success and false if this producer was
+// already stopped.
+func (producer *Producer) Stop() bool {
+	producer.Lock()
+	defer producer.Unlock()
+
+	if producer.isStopped {
+		return false
+	}
+
 	producer.stop <- struct{}{}
+	producer.isStopped = true
+	return true
 }
 
 // manager is responsible for accepting new put requests and inserting them
@@ -34,7 +48,9 @@ func (producer *Producer) manager(socket string, options Options) {
 	newConnection, abortConnect := Connect(socket, options)
 
 	// Close the client and reconnect.
-	reconnect := func() {
+	reconnect := func(format string, a ...interface{}) {
+		options.LogError(format, a...)
+
 		if client != nil {
 			client.Close()
 			client, putC, lastTube = nil, nil, ""
@@ -45,6 +61,11 @@ func (producer *Producer) manager(socket string, options Options) {
 
 	for {
 		select {
+		// Set up a new beanstalk client connection.
+		case conn := <-newConnection:
+			client, abortConnect = NewClient(conn, options), nil
+			putC = producer.putC
+
 		// This case handles new 'put' requests.
 		case put := <-putC:
 			request := &put.request
@@ -52,8 +73,7 @@ func (producer *Producer) manager(socket string, options Options) {
 			if request.Tube != lastTube {
 				if err := client.Use(request.Tube); err != nil {
 					put.Response(0, err)
-					options.LogError("Unable to use tube '%s': %s", request.Tube, err)
-					reconnect()
+					reconnect("Unable to use tube '%s': %s", request.Tube, err)
 					break
 				}
 
@@ -63,15 +83,10 @@ func (producer *Producer) manager(socket string, options Options) {
 			// Insert the job into beanstalk and return the response.
 			id, err := client.Put(request)
 			if err != nil {
-				options.LogError("Unable to put job into beanstalk: %s", err)
-				reconnect()
+				reconnect("Unable to put job into beanstalk: %s", err)
 			}
 
 			put.Response(id, err)
-
-		case conn := <-newConnection:
-			client, abortConnect = NewClient(conn, options), nil
-			putC = producer.putC
 
 		// Close the connection and stop this goroutine from running.
 		case <-producer.stop:

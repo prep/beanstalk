@@ -2,16 +2,19 @@ package beanstalk
 
 import (
 	"strings"
+	"sync"
 	"time"
 )
 
 // Consumer reserves jobs from a beanstalk server and keeps those jobs alive
 // until an external consumer has either buried, deleted or released it.
 type Consumer struct {
-	tubes []string
-	jobC  chan<- *Job
-	pause chan bool
-	stop  chan struct{}
+	tubes     []string
+	isStopped bool
+	jobC      chan<- *Job
+	pause     chan bool
+	stop      chan struct{}
+	sync.Mutex
 }
 
 // NewConsumer returns a new Consumer object.
@@ -27,29 +30,55 @@ func NewConsumer(socket string, tubes []string, jobC chan<- *Job, options Option
 	return consumer
 }
 
-// Play allows this consumer to start reserving jobs.
-func (consumer *Consumer) Play() {
-	select {
-	case <-consumer.pause:
-	default:
+// Play allows this consumer to start reserving jobs. Returns true on success
+// and false if this consumer was stopped.
+func (consumer *Consumer) Play() bool {
+	consumer.Lock()
+	defer consumer.Unlock()
+
+	if consumer.isStopped {
+		return false
+	}
+
+	if len(consumer.pause) != 0 {
+		<-consumer.pause
 	}
 
 	consumer.pause <- false
+	return true
 }
 
-// Pause stops this consumer from reserving jobs.
-func (consumer *Consumer) Pause() {
-	select {
-	case <-consumer.pause:
-	default:
+// Pause stops this consumer from reserving jobs. Returns true on success and
+// false if this consumer was stopped.
+func (consumer *Consumer) Pause() bool {
+	consumer.Lock()
+	defer consumer.Unlock()
+
+	if consumer.isStopped {
+		return false
+	}
+
+	if len(consumer.pause) != 0 {
+		<-consumer.pause
 	}
 
 	consumer.pause <- true
+	return true
 }
 
-// Stop this consumer.
-func (consumer *Consumer) Stop() {
+// Stop this consumer. Returns true on success and false if this consumer was
+// already stopped.
+func (consumer *Consumer) Stop() bool {
+	consumer.Lock()
+	defer consumer.Unlock()
+
+	if consumer.isStopped {
+		return false
+	}
+
 	consumer.stop <- struct{}{}
+	consumer.isStopped = true
+	return true
 }
 
 // manager takes care of reserving, touching and bury/delete/release-ing of
