@@ -43,12 +43,13 @@ func NewClient(conn net.Conn, options Options) *Client {
 
 // Close the connection to the beanstalk server.
 func (client *Client) Close() {
-	if client.conn == nil {
+	if client.textConn == nil {
 		return
 	}
 
 	client.options.LogInfo("Closing connection to beanstalk server %s (local=%s)", client.conn.RemoteAddr().String(), client.conn.LocalAddr().String())
-	client.conn.Close()
+	client.textConn.Close()
+	client.textConn = nil
 	client.conn = nil
 }
 
