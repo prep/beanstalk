@@ -217,9 +217,8 @@ func (consumer *Consumer) manager(socket string, options Options) {
 
 		// Stop this consumer from running.
 		case <-consumer.stop:
-			releaseJob()
-
 			if client != nil {
+				releaseJob()
 				client.Close()
 			}
 
