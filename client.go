@@ -26,16 +26,16 @@ var (
 
 // Client implements a simple beanstalk API.
 type Client struct {
-	options     Options
+	options     *Options
 	conn        net.Conn
 	textConn    *textproto.Conn
 	isConnected bool
 }
 
 // NewClient returns a new beanstalk Client object.
-func NewClient(conn net.Conn, options Options) *Client {
+func NewClient(conn net.Conn, options *Options) *Client {
 	return &Client{
-		options:     SanitizeOptions(options),
+		options:     options,
 		conn:        conn,
 		textConn:    textproto.NewConn(conn),
 		isConnected: true}

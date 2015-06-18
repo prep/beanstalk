@@ -10,7 +10,7 @@ type ConsumerPool struct {
 }
 
 // NewConsumerPool creates a pool of Consumer objects.
-func NewConsumerPool(sockets []string, tubes []string, options Options) *ConsumerPool {
+func NewConsumerPool(sockets []string, tubes []string, options *Options) *ConsumerPool {
 	pool := &ConsumerPool{C: make(chan *Job)}
 
 	for _, socket := range sockets {

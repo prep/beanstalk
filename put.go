@@ -9,20 +9,20 @@ type Put struct {
 	request  PutRequest
 	response PutResponse
 	timer    *time.Timer
-	options  Options
+	options  *Options
 	putC     chan<- *Put
 	respC    chan struct{}
 }
 
 // NewPut returns a new Put object that operates on the specified producer
 // channel.
-func NewPut(putC chan<- *Put, options Options) *Put {
+func NewPut(putC chan<- *Put, options *Options) *Put {
 	timer := time.NewTimer(time.Second)
 	timer.Stop()
 
 	return &Put{
 		timer:   timer,
-		options: SanitizeOptions(options),
+		options: options,
 		putC:    putC,
 		respC:   make(chan struct{})}
 }

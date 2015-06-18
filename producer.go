@@ -12,13 +12,13 @@ type Producer struct {
 }
 
 // NewProducer returns a new Producer object.
-func NewProducer(socket string, putC chan *Put, options Options) *Producer {
+func NewProducer(socket string, putC chan *Put, options *Options) *Producer {
 	producer := &Producer{
 		putC: putC,
 		stop: make(chan struct{}, 1),
 	}
 
-	go producer.manager(socket, SanitizeOptions(options))
+	go producer.manager(socket, options)
 	return producer
 }
 
@@ -39,7 +39,7 @@ func (producer *Producer) Stop() bool {
 
 // manager is responsible for accepting new put requests and inserting them
 // into beanstalk.
-func (producer *Producer) manager(socket string, options Options) {
+func (producer *Producer) manager(socket string, options *Options) {
 	var client *Client
 	var lastTube string
 	var putC chan *Put

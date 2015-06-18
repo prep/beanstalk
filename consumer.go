@@ -18,7 +18,7 @@ type Consumer struct {
 }
 
 // NewConsumer returns a new Consumer object.
-func NewConsumer(socket string, tubes []string, jobC chan<- *Job, options Options) *Consumer {
+func NewConsumer(socket string, tubes []string, jobC chan<- *Job, options *Options) *Consumer {
 	consumer := &Consumer{
 		tubes: tubes,
 		jobC:  jobC,
@@ -26,7 +26,7 @@ func NewConsumer(socket string, tubes []string, jobC chan<- *Job, options Option
 		stop:  make(chan struct{}, 1),
 	}
 
-	go consumer.manager(socket, SanitizeOptions(options))
+	go consumer.manager(socket, options)
 	return consumer
 }
 
@@ -83,7 +83,7 @@ func (consumer *Consumer) Stop() bool {
 
 // manager takes care of reserving, touching and bury/delete/release-ing of
 // beanstalk jobs.
-func (consumer *Consumer) manager(socket string, options Options) {
+func (consumer *Consumer) manager(socket string, options *Options) {
 	var client *Client
 	var job *Job
 	var jobOffer chan<- *Job

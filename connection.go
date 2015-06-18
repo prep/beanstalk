@@ -8,7 +8,7 @@ import (
 // Connect tries to create a new connection to the specified socket. It returns
 // a channel on which a successful connect is advertised, as well as a channel
 // to abort a connection attempt in progress.
-func Connect(socket string, options Options) (<-chan net.Conn, chan<- struct{}) {
+func Connect(socket string, options *Options) (<-chan net.Conn, chan<- struct{}) {
 	newConnection, abortConnect := make(chan net.Conn), make(chan struct{}, 1)
 
 	go func() {

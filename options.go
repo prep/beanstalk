@@ -6,29 +6,12 @@ import (
 )
 
 // DefaultOptions returns an Options object with default values.
-func DefaultOptions() Options {
-	return Options{
+func DefaultOptions() *Options {
+	return &Options{
 		ReserveWindow:    1,
 		ReserveTimeout:   time.Second,
 		ReconnectTimeout: time.Second * 3,
 	}
-}
-
-// SanitizeOptions returns sane Options structure to work with.
-func SanitizeOptions(options Options) Options {
-	if options.ReserveWindow < 1 {
-		options.ReserveWindow = 1
-	}
-
-	if options.ReserveTimeout < time.Second {
-		options.ReserveTimeout = time.Second
-	}
-
-	if options.ReconnectTimeout < time.Second {
-		options.ReconnectTimeout = time.Second
-	}
-
-	return options
 }
 
 // Options define the configurable parts of the Client, Consumers and Producers.
@@ -62,7 +45,7 @@ type Options struct {
 }
 
 // LogInfo writes a log message to the InfoLog logger, if it was set.
-func (options Options) LogInfo(format string, v ...interface{}) {
+func (options *Options) LogInfo(format string, v ...interface{}) {
 	if options.InfoLog == nil {
 		return
 	}
@@ -75,7 +58,7 @@ func (options Options) LogInfo(format string, v ...interface{}) {
 }
 
 // LogError writes a log message to the ErrorLog logger, if it was set.
-func (options Options) LogError(format string, v ...interface{}) {
+func (options *Options) LogError(format string, v ...interface{}) {
 	if options.ErrorLog == nil {
 		return
 	}
