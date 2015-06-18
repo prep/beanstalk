@@ -19,6 +19,10 @@ type Consumer struct {
 
 // NewConsumer returns a new Consumer object.
 func NewConsumer(socket string, tubes []string, jobC chan<- *Job, options *Options) *Consumer {
+	if options == nil {
+		options = DefaultOptions()
+	}
+
 	consumer := &Consumer{
 		tubes: tubes,
 		jobC:  jobC,

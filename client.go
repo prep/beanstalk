@@ -34,6 +34,10 @@ type Client struct {
 
 // NewClient returns a new beanstalk Client object.
 func NewClient(conn net.Conn, options *Options) *Client {
+	if options == nil {
+		options = DefaultOptions()
+	}
+
 	return &Client{
 		options:     options,
 		conn:        conn,

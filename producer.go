@@ -13,6 +13,10 @@ type Producer struct {
 
 // NewProducer returns a new Producer object.
 func NewProducer(socket string, putC chan *Put, options *Options) *Producer {
+	if options == nil {
+		options = DefaultOptions()
+	}
+
 	producer := &Producer{
 		putC: putC,
 		stop: make(chan struct{}, 1),

@@ -6,7 +6,6 @@ import "sync"
 // incoming Put requests over the maintained Producers.
 type ProducerPool struct {
 	producers []*Producer
-	options   *Options
 	putC      chan *Put
 	putTokens chan *Put
 	sync.Mutex
@@ -14,7 +13,7 @@ type ProducerPool struct {
 
 // NewProducerPool creates a pool of Producer objects.
 func NewProducerPool(sockets []string, options *Options) *ProducerPool {
-	pool := &ProducerPool{putC: make(chan *Put), options: options}
+	pool := &ProducerPool{putC: make(chan *Put)}
 	pool.putTokens = make(chan *Put, len(sockets))
 
 	for _, socket := range sockets {

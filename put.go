@@ -17,6 +17,10 @@ type Put struct {
 // NewPut returns a new Put object that operates on the specified producer
 // channel.
 func NewPut(putC chan<- *Put, options *Options) *Put {
+	if options == nil {
+		options = DefaultOptions()
+	}
+
 	timer := time.NewTimer(time.Second)
 	timer.Stop()
 
