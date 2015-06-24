@@ -88,13 +88,25 @@ func (consumer *Consumer) Stop() bool {
 // manager takes care of reserving, touching and bury/delete/release-ing of
 // beanstalk jobs.
 func (consumer *Consumer) manager(socket string, options *Options) {
+	var err error
 	var client *Client
+	var isPaused = true
 	var job *Job
 	var jobOffer chan<- *Job
-	var err error
-	var isPaused = true
 
-	// Set up a new connection.
+	// The queue to keep the reserved jobs in.
+	queue := NewJobQueue(options.ReserveWindow)
+	var queueItem *JobQueueItem
+
+	// This is used to pause the select-statement for a bit when the job queue
+	// is full or when "reserve-with-timeout 0" yields no job.
+	timeout := time.NewTimer(time.Second)
+	timeout.Stop()
+
+	// The channel to receive requests for finishing jobs on.
+	finishJob := make(chan *JobCommand)
+
+	// Start a new connection.
 	newConnection, abortConnect := Connect(socket, options)
 
 	// Close the client and reconnect.
@@ -103,55 +115,45 @@ func (consumer *Consumer) manager(socket string, options *Options) {
 
 		if client != nil {
 			client.Close()
-			client, job, jobOffer = nil, nil, nil
+			client = nil
+
+			queue.Clear()
+
 			options.LogInfo("Consumer connection closed. Reconnecting")
 			newConnection, abortConnect = Connect(socket, options)
 		}
 	}
 
-	// This timer is used to keep a reserved job alive.
-	touchTimer := time.NewTimer(time.Second)
-	touchTimer.Stop()
-
-	// releaseJob returns a job back to beanstalk.
-	releaseJob := func() {
-		if client != nil && job != nil {
-			client.Release(job, job.Priority, 0)
-			job, jobOffer = nil, nil
-			touchTimer.Stop()
-		}
-	}
-
-	// The channel to receive requests for finishing jobs on.
-	finishJob := make(chan *JobCommand)
-
 	for {
-		// Reserve a new job, if the state allows for it.
-		if !isPaused && client != nil && job == nil {
-			select {
-			// A job wanting to finish at this stage is never successful.
-			case finish := <-finishJob:
-				finish.Err <- ErrNotFound
-				continue
+		job, jobOffer = nil, nil
 
-			case isPaused = <-consumer.pause:
-				continue
+		if !isPaused && client != nil {
+			if queue.IsFull() {
+				timeout.Reset(time.Second)
+			} else {
+				if queue.IsEmpty() {
+					job, err = client.Reserve(options.ReserveTimeout)
+				} else {
+					job, err = client.Reserve(0)
+				}
 
-			case <-consumer.stop:
-				client.Close()
-				return
-
-			default:
+				if err != nil {
+					reconnect("Unable to reserve job: %s", err)
+				} else if job != nil {
+					job.Finish = finishJob
+					queue.AddJob(job)
+					timeout.Reset(0)
+				} else if !queue.IsEmpty() {
+					// No job, but still 1 or more jobs from previous attempts left.
+					timeout.Reset(time.Second)
+				} else {
+					// No job, and no reserved jobs from previous attempts.
+					timeout.Reset(0)
+				}
 			}
 
-			// Try to reserve a new job.
-			if job, err = client.Reserve(); err != nil {
-				reconnect("Unable to reserve job: %s", err)
-			} else if job != nil {
-				jobOffer, job.Finish = consumer.jobC, finishJob
-				touchTimer.Reset(job.TTR)
-			} else {
-				continue
+			if queueItem = queue.ItemForOffer(); queueItem != nil {
+				job, jobOffer = queueItem.job, consumer.jobC
 			}
 		}
 
@@ -176,26 +178,29 @@ func (consumer *Consumer) manager(socket string, options *Options) {
 
 		// Offer the job up on the shared jobs channel.
 		case jobOffer <- job:
-			jobOffer = nil
+			queueItem.SetOffered()
 
-		// Regularly touch a job to keep it reserved.
-		case <-touchTimer.C:
-			if err = client.Touch(job); err != nil {
-				reconnect("Unable to touch job: %s", err)
-				job, jobOffer = nil, nil
-				break
+		case <-queue.TouchC:
+			for _, item := range queue.ItemsForTouch() {
+				if err = client.Touch(item.job); err != nil {
+					reconnect("%d: Unable to touch job: %s", item.job.ID, err)
+					break
+				}
+
+				item.Refresh()
 			}
 
-			touchTimer.Reset(job.TTR)
+			queue.UpdateTimer()
+
+		// Wait a bit before trying to reserve a job again, or just fall through.
+		case <-timeout.C:
 
 		// Bury, delete or release a reserved job.
 		case finish := <-finishJob:
-			if job != finish.Job {
+			if !queue.HasJob(finish.Job) {
 				finish.Err <- ErrNotFound
 				break
 			}
-
-			touchTimer.Stop()
 
 			switch finish.Command {
 			case Bury:
@@ -210,19 +215,28 @@ func (consumer *Consumer) manager(socket string, options *Options) {
 				reconnect("Unable to finish job: %s", err)
 			}
 
-			job = nil
+			queue.DelJob(finish.Job)
 			finish.Err <- err
 
 		// Pause or unpause the action of reserving new jobs.
 		case isPaused = <-consumer.pause:
-			if isPaused && jobOffer != nil {
-				releaseJob()
+			// When paused, release unoffered jobs in the queue.
+			if isPaused {
+				for _, job = range queue.UnofferedJobs() {
+					client.Release(job, job.Priority, 0)
+					queue.DelJob(job)
+				}
 			}
 
 		// Stop this consumer from running.
 		case <-consumer.stop:
+			// If a client connection is up, release all jobs in the queue.
 			if client != nil {
-				releaseJob()
+				for _, job = range queue.Jobs() {
+					client.Release(job, job.Priority, 0)
+				}
+
+				queue.Clear()
 				client.Close()
 			}
 

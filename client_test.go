@@ -186,7 +186,7 @@ func TestReserve(t *testing.T) {
 	client := NewTestClient(t, "reserve-with-timeout 1", "RESERVED 1234 11\r\nHello World")
 	defer client.Close()
 
-	job, err := client.Reserve()
+	job, err := client.Reserve(time.Second)
 	if err != nil {
 		t.Fatalf("Unexpected error from Reserve: %s", err)
 	}
@@ -196,10 +196,10 @@ func TestReserve(t *testing.T) {
 }
 
 func TestReserveTimedOut(t *testing.T) {
-	client := NewTestClient(t, "reserve-with-timeout 1", "TIMED_OUT")
+	client := NewTestClient(t, "reserve-with-timeout 2", "TIMED_OUT")
 	defer client.Close()
 
-	job, err := client.Reserve()
+	job, err := client.Reserve(2 * time.Second)
 	if err != nil {
 		t.Fatalf("Unexpected error from Reserve: %s", err)
 	}

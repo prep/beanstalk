@@ -100,15 +100,15 @@ func (client *Client) Release(job *Job, priority uint32, delay time.Duration) er
 }
 
 // Reserve retrieves a new job.
-func (client *Client) Reserve() (*Job, error) {
-	err := client.request("reserve-with-timeout %d", client.options.ReserveTimeout/time.Second)
+func (client *Client) Reserve(timeout time.Duration) (*Job, error) {
+	err := client.request("reserve-with-timeout %d", timeout/time.Second)
 	if err != nil {
 		return nil, err
 	}
 
 	// Set a read deadline that is slightly longer than the reserve timeout.
-	if client.options.ReserveTimeout != 0 {
-		client.conn.SetReadDeadline(time.Now().Add(client.options.ReserveTimeout + time.Second))
+	if timeout != 0 {
+		client.conn.SetReadDeadline(time.Now().Add(timeout + time.Second))
 		defer client.conn.SetReadDeadline(time.Time{})
 	}
 
