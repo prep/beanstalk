@@ -13,6 +13,7 @@ type Consumer struct {
 	jobC      chan<- *Job
 	pause     chan bool
 	stop      chan struct{}
+	resize    chan int
 	isPaused  bool
 	isStopped bool
 	options   *Options
@@ -32,9 +33,10 @@ func NewConsumer(socket string, tubes []string, jobC chan<- *Job, options *Optio
 		jobC:     jobC,
 		pause:    make(chan bool, 1),
 		stop:     make(chan struct{}, 1),
+		resize:   make(chan int, 1),
 		isPaused: true,
 		options:  options,
-		queue:    NewJobQueue(options.ReserveWindow),
+		queue:    NewJobQueue(options.QueueSize),
 	}
 
 	go consumer.manager(socket, options)
@@ -89,6 +91,23 @@ func (consumer *Consumer) Stop() bool {
 
 	consumer.stop <- struct{}{}
 	consumer.isStopped = true
+	return true
+}
+
+// ResizeQueue resizes the number of jobs can be reserved in a queue.
+func (consumer *Consumer) ResizeQueue(size int) bool {
+	consumer.Lock()
+	defer consumer.Unlock()
+
+	if consumer.isStopped {
+		return false
+	}
+
+	if len(consumer.resize) != 0 {
+		<-consumer.resize
+	}
+
+	consumer.resize <- size
 	return true
 }
 
@@ -239,6 +258,10 @@ func (consumer *Consumer) manager(socket string, options *Options) {
 
 			consumer.queue.DelJob(finish.Job)
 			finish.Err <- err
+
+		// Resize the jobs queue.
+		case size := <-consumer.resize:
+			consumer.queue.Resize(size)
 
 		// Pause or unpause the action of reserving new jobs.
 		case consumer.isPaused = <-consumer.pause:

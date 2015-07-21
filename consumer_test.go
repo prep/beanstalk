@@ -28,7 +28,7 @@ func NewTestConsumer(t *testing.T, window int) *TestConsumer {
 	jobC := make(chan *Job)
 
 	options := &Options{
-		ReserveWindow:    window,
+		QueueSize:        window,
 		ReserveTimeout:   time.Second,
 		ReconnectTimeout: time.Second * 3,
 	}
@@ -179,7 +179,7 @@ func TestConsumerReserveAndDelete(t *testing.T) {
 	consumer.ExpectNoRequest()
 }
 
-func TestConsumerReserveWithWindowSizeOf2(t *testing.T) {
+func TestConsumerReserveWithQueueSizeOf2(t *testing.T) {
 	consumer := NewTestConsumer(t, 2)
 	defer consumer.Close()
 	consumer.Play()

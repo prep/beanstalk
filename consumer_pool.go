@@ -51,3 +51,13 @@ func (pool *ConsumerPool) Pause() {
 		consumer.Pause()
 	}
 }
+
+// ResizeQueue resizes the job queue of each consumer.
+func (pool *ConsumerPool) ResizeQueue(size int) {
+	pool.Lock()
+	defer pool.Unlock()
+
+	for _, consumer := range pool.consumers {
+		consumer.ResizeQueue(size)
+	}
+}
