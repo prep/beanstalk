@@ -184,6 +184,9 @@ func (queue *JobQueue) Jobs() []*Job {
 // than the amount of items currently in the queue, IsFull() will keep
 // returning true until the number of items dip below the new size.
 func (queue *JobQueue) Resize(size int) {
+	if size < 1 {
+		size = 1
+	}
 	if queue.size >= size {
 		queue.size = size
 		return
