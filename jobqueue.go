@@ -59,12 +59,12 @@ func (item *JobQueueItem) ShouldBeTouched() bool {
 
 // JobQueue maintains a queue of reserved beanstalk jobs.
 type JobQueue struct {
-	// TouchC triggers whenever there are 1 or more beanstalk jobs that needs
-	// touching.
+	// TouchC triggers whenever there are 1 or more jobs that needs touching.
 	TouchC <-chan time.Time
 
 	queue      []*JobQueueItem
-	count      int
+	itemCount  int
+	size       int
 	touchTimer *time.Timer
 }
 
@@ -73,16 +73,8 @@ func NewJobQueue(size int) *JobQueue {
 	timer := time.NewTimer(time.Second)
 	timer.Stop()
 
-	queue := &JobQueue{
-		queue:      make([]*JobQueueItem, size),
-		touchTimer: timer,
-		TouchC:     timer.C,
-	}
-
-	for i := 0; i < size; i++ {
-		queue.queue[i] = NewJobQueueItem()
-		queue.queue[i].Clear()
-	}
+	queue := &JobQueue{TouchC: timer.C, touchTimer: timer}
+	queue.Resize(size)
 
 	return queue
 }
@@ -93,7 +85,7 @@ func (queue *JobQueue) AddJob(job *Job) *JobQueueItem {
 	for _, item := range queue.queue {
 		if item.job == nil {
 			item.SetJob(job)
-			queue.count++
+			queue.itemCount++
 			queue.UpdateTimer()
 			return item
 		}
@@ -108,7 +100,7 @@ func (queue *JobQueue) Clear() {
 		item.Clear()
 	}
 
-	queue.count = 0
+	queue.itemCount = 0
 	queue.UpdateTimer()
 }
 
@@ -117,7 +109,7 @@ func (queue *JobQueue) DelJob(job *Job) error {
 	for _, item := range queue.queue {
 		if item.job == job {
 			item.Clear()
-			queue.count--
+			queue.itemCount--
 			queue.UpdateTimer()
 			return nil
 		}
@@ -139,12 +131,12 @@ func (queue *JobQueue) HasJob(job *Job) bool {
 
 // IsEmpty returns true when this queue is empty.
 func (queue *JobQueue) IsEmpty() bool {
-	return queue.count == 0
+	return queue.itemCount == 0
 }
 
 // IsFull returns true when this queue is full.
 func (queue *JobQueue) IsFull() bool {
-	return queue.count == len(queue.queue)
+	return queue.itemCount >= queue.size
 }
 
 // ItemsForTouch returns the items that need touching in order to keep their
@@ -186,6 +178,29 @@ func (queue *JobQueue) Jobs() []*Job {
 	}
 
 	return jobs
+}
+
+// Resize the queue to the specified size. If the specified size is smaller
+// than the amount of items currently in the queue, IsFull() will keep
+// returning true until the number of items dip below the new size.
+func (queue *JobQueue) Resize(size int) {
+	if queue.size >= size {
+		queue.size = size
+		return
+	}
+
+	newQueue := make([]*JobQueueItem, size)
+	for i, item := range queue.queue {
+		newQueue[i] = item
+	}
+
+	for i := queue.size; i < size; i++ {
+		newQueue[i] = NewJobQueueItem()
+		newQueue[i].Clear()
+	}
+
+	queue.size = size
+	queue.queue = newQueue
 }
 
 // UnofferedJobs returns a slice of all the jobs in the queue that were not

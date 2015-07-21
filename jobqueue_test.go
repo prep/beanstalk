@@ -149,12 +149,12 @@ func TestNewJobQueue(t *testing.T) {
 
 func TestJobQueueAddJob(t *testing.T) {
 	queue := NewJobQueue(2)
-	if queue.count != 0 {
+	if queue.itemCount != 0 {
 		t.Error("Expected the number of items in the queue to be 0")
 	}
 
 	queue.AddJob(job)
-	if queue.count != 1 {
+	if queue.itemCount != 1 {
 		t.Error("Expected the number of items in the queue to be 1")
 	}
 	if count := numberOfItemsInTheQueue(queue); count != 1 {
@@ -165,12 +165,12 @@ func TestJobQueueAddJob(t *testing.T) {
 func TestJobQueueClear(t *testing.T) {
 	queue := NewJobQueue(2)
 	queue.AddJob(job)
-	if queue.count != 1 {
+	if queue.itemCount != 1 {
 		t.Error("Expected the number of items in the queue to be 1")
 	}
 
 	queue.Clear()
-	if queue.count != 0 {
+	if queue.itemCount != 0 {
 		t.Error("Expected the number of items in the queue to be 0")
 	}
 	if count := numberOfItemsInTheQueue(queue); count != 0 {
@@ -181,14 +181,14 @@ func TestJobQueueClear(t *testing.T) {
 func TestJobQueueDelJob(t *testing.T) {
 	queue := NewJobQueue(2)
 	queue.AddJob(job)
-	if queue.count != 1 {
+	if queue.itemCount != 1 {
 		t.Error("Expected the number of items in the queue to be 1")
 	}
 
 	if err := queue.DelJob(job); err != nil {
 		t.Errorf("Unexpected error while deleting job: %s", err)
 	}
-	if queue.count != 0 {
+	if queue.itemCount != 0 {
 		t.Error("Expected the number of items in the queue to be 0")
 	}
 	if count := numberOfItemsInTheQueue(queue); count != 0 {
@@ -274,6 +274,80 @@ func TestJobQueueJobs(t *testing.T) {
 	queue.AddJob(job)
 	if len(queue.Jobs()) != 2 {
 		t.Error("Expected 2 job in the queue")
+	}
+}
+
+func TestJobQueueResize(t *testing.T) {
+	queue := NewJobQueue(2)
+	if queue.size != 2 {
+		t.Error("Expected the queue size to be 2")
+	}
+	if len(queue.queue) != 2 {
+		t.Error("Expected the queue slice size to be 2")
+	}
+
+	// Make the queue larger.
+	queue.Resize(10)
+	if queue.size != 10 {
+		t.Error("Expected the queue size to be 10")
+	}
+	if len(queue.queue) != 10 {
+		t.Error("Expected the queue slice size to be 10")
+	}
+
+	// Make the queue smaller.
+	queue.Resize(5)
+	if queue.size != 5 {
+		t.Error("Expected the queue size to be 5")
+	}
+	if len(queue.queue) != 10 {
+		t.Error("Expected the queue slice size to still be 10")
+	}
+}
+
+func TestJobQueueResizeWithItems(t *testing.T) {
+	queue := NewJobQueue(2)
+
+	// Add 2 jobs to the queue with a limit of 2.
+	queue.AddJob(job)
+	queue.AddJob(job)
+	if !queue.IsFull() {
+		t.Error("Expected the queue to be full")
+	}
+
+	// Resize the queue to allow holding 3 jobs and add the 3rd job.
+	queue.Resize(3)
+	if queue.IsFull() {
+		t.Error("Expected there to be room in the queue")
+	}
+	queue.AddJob(job)
+	if !queue.IsFull() {
+		t.Error("Expected the queue to be full")
+	}
+
+	// Resize the queue to hold just 1 item.
+	queue.Resize(1)
+	if !queue.IsFull() {
+		t.Error("Expected the queue to be full")
+	}
+
+	queue.DelJob(queue.ItemForOffer().job)
+	queue.DelJob(queue.ItemForOffer().job)
+	if !queue.IsFull() {
+		t.Error("Expected the queue to be full")
+	}
+
+	queue.DelJob(queue.ItemForOffer().job)
+	if queue.IsFull() {
+		t.Error("Expected there to be room in the queue")
+	}
+	if !queue.IsEmpty() {
+		t.Error("Expected the queue to be empty")
+	}
+
+	queue.AddJob(job)
+	if !queue.IsFull() {
+		t.Error("Expected the queue to be full")
 	}
 }
 
