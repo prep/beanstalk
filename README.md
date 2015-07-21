@@ -90,20 +90,27 @@ An **Options** struct can be provided at the end of each *NewProducer()*, *NewPr
 
 ```go
 options := &beanstalk.Options{
+    QueueSize:        1,
+
     ReserveTimeout:   3 * time.Second,
     ReconnectTimeout: 3 * time.Second,
     ReadWriteTimeout: 5 * time.Second,
+
+    InfoLog:          log.New(os.Stdout, "INFO: ", 0),
+    ErrorLog:         log.New(os.Stderr, "ERROR: ", 0),
 }
 
 producerPool := beanstalk.NewProducerPool([]string{"127.0.0.1:11300"}, options)
 consumerPool := beanstalk.NewConsumerPool([]string{"127.0.0.1:11300"}, []string{"test"}, options)
 ```
 
+* **QueueSize** defines the number of beanstalk jobs a single Consumer can reserve and maintain. This is useful if you want to deal with multiple jobs at the same time.
 * **ReserveTimeout** defines how long a beanstalk reserve command should wait before it should timeout. The default and minimum value is 1 second.
 * **ReconnectTimeout** defines how long a producer or consumer should wait between reconnect attempts. The default is 3 seconds, with a minimum of 1 second.
 * **ReadWriteTimeout** defines how long each Read() or Write() operation is allowed to block until the connection is considered broken. The default is disabled and the minimum value is 1ms.
+* **InfoLog** is used to log info messages to, but can be nil.
+* **ErrorLog** is used to log error messages to, but can be nil.
 
 License
 -------
 This software is created for MessageBird B.V. and licensed under [The ISC License](http://opensource.org/licenses/ISC). Copyright (c) 2015, Maurice Nonnekes <maurice@messagebird.com>.
-
