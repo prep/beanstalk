@@ -176,7 +176,7 @@ func (consumer *Consumer) manager(socket string, options *Options) {
 		if consumer.isLive() {
 			// Try to reserve a job if the job queue isn't full already.
 			if !consumer.queue.IsFull() {
-				if job, err = consumer.reserveJob(); err != nil {
+				if job, err = consumer.reserveJob(); err != nil && err != ErrDeadlineSoon {
 					reconnect("Unable to reserve job: %s", err)
 				} else if job != nil {
 					timeout.Reset(0)

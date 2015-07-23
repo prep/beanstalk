@@ -282,3 +282,18 @@ func TestConsumerQueueOnReconnect(t *testing.T) {
 	consumer.ExpectWatchAndIgnore()
 	consumer.Expect("reserve-with-timeout 1") <- "TIMED_OUT"
 }
+
+func TestConsumerReserveWithDeadline(t *testing.T) {
+	consumer := NewTestConsumer(t, 2)
+	defer consumer.Close()
+	consumer.Play()
+
+	// Try to reserve 2 jobs for which a DEADLINE_SOON is issued on the 2nd
+	// reserve.
+	consumer.Expect("reserve-with-timeout 1") <- "RESERVED 1 3\r\nfoo"
+	consumer.Expect("stats-job 1") <- "OK 29\r\n---\n    pri: 1024\n    ttr: 3\n"
+	consumer.Expect("reserve-with-timeout 0") <- "DEADLINE_SOON"
+
+	// A DEADLINE_SOON should simply trigger a new reserve.
+	consumer.Expect("reserve-with-timeout 0") <- "TIMED_OUT"
+}

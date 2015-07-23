@@ -14,6 +14,7 @@ import (
 var (
 	ErrBuried           = errors.New("Job is buried")
 	ErrConnectionClosed = errors.New("Remote end closed connection")
+	ErrDeadlineSoon     = errors.New("Deadline soon")
 	ErrDraining         = errors.New("Server in draining mode")
 	ErrExpectedCRLF     = errors.New("Expected CRLF after job body")
 	ErrJobTooBig        = errors.New("Job body too big")
@@ -213,6 +214,10 @@ func (client *Client) response() (uint64, []byte, error) {
 		}
 
 		return 0, nil, ErrBuried
+
+	// Deadline soon means a reserved job is about to expire.
+	case "DEADLINE_SOON":
+		return 0, nil, ErrDeadlineSoon
 
 	// INSERTED is a successful response to a _put_ command.
 	case "INSERTED":
