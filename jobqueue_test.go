@@ -215,6 +215,13 @@ func TestJobQueueHasJob(t *testing.T) {
 	}
 }
 
+func TestJobQueueHasJobWithNil(t *testing.T) {
+	queue := NewJobQueue(1)
+	if queue.HasJob(nil) {
+		t.Error("Expected HasJob() to not find a job when specified a nil value")
+	}
+}
+
 func TestJobQueueIsEmpty(t *testing.T) {
 	queue := NewJobQueue(2)
 	if !queue.IsEmpty() {

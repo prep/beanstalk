@@ -120,6 +120,10 @@ func (queue *JobQueue) DelJob(job *Job) error {
 
 // HasJob checks if the specified job is in the queue.
 func (queue *JobQueue) HasJob(job *Job) bool {
+	if job == nil {
+		return false
+	}
+
 	for _, item := range queue.queue {
 		if item.job == job {
 			return true
