@@ -137,9 +137,6 @@ func (client *Client) Reserve(timeout time.Duration) (*Job, error) {
 		}
 	}
 
-	// Shave off 100 milliseconds to have some room to play with between touches.
-	job.TTR -= 100 * time.Millisecond
-
 	return job, nil
 }
 

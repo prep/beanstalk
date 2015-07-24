@@ -5,6 +5,10 @@ import (
 	"time"
 )
 
+// TouchSafetyMargin defines the margin between refreshing a reserved job with
+// a beanstalk touch command and the time the job expires.
+var TouchSafetyMargin = 100 * time.Millisecond
+
 // JobQueueItem represents a reserved beanstalk Job that is in the JobQueue.
 type JobQueueItem struct {
 	job        *Job
@@ -54,7 +58,7 @@ func (item *JobQueueItem) ShouldBeTouched() bool {
 		return false
 	}
 
-	return item.touchAt.Before(time.Now().Add(50 * time.Millisecond))
+	return item.touchAt.Before(time.Now().Add(TouchSafetyMargin))
 }
 
 // JobQueue maintains a queue of reserved beanstalk jobs.
@@ -107,7 +111,7 @@ func (queue *JobQueue) Clear() {
 // DelJob removes a job from the queue.
 func (queue *JobQueue) DelJob(job *Job) error {
 	for _, item := range queue.queue {
-		if item.job == job {
+		if item.job != nil && item.job == job {
 			item.Clear()
 			queue.itemCount--
 			queue.UpdateTimer()
@@ -120,12 +124,8 @@ func (queue *JobQueue) DelJob(job *Job) error {
 
 // HasJob checks if the specified job is in the queue.
 func (queue *JobQueue) HasJob(job *Job) bool {
-	if job == nil {
-		return false
-	}
-
 	for _, item := range queue.queue {
-		if item.job == job {
+		if item.job != nil && item.job == job {
 			return true
 		}
 	}
@@ -232,13 +232,13 @@ func (queue *JobQueue) UpdateTimer() {
 	}
 
 	var touchAt = time.Time{}
-	for i, item := range queue.queue {
-		if i == 0 {
-			touchAt = item.touchAt
-		} else if item.touchAt.Before(touchAt) {
-			touchAt = item.touchAt
+	for _, item := range queue.queue {
+		if item.job != nil {
+			if touchAt.Equal(time.Time{}) || item.touchAt.Before(touchAt) {
+				touchAt = item.touchAt
+			}
 		}
 	}
 
-	queue.touchTimer.Reset(touchAt.Sub(time.Now()))
+	queue.touchTimer.Reset(touchAt.Sub(time.Now().Add(TouchSafetyMargin)))
 }
