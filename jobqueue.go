@@ -191,7 +191,7 @@ func (queue *JobQueue) Resize(size int) {
 	if size < 1 {
 		size = 1
 	}
-	if queue.size >= size {
+	if len(queue.queue) >= size {
 		queue.size = size
 		return
 	}

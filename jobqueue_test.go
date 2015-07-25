@@ -310,6 +310,15 @@ func TestJobQueueResize(t *testing.T) {
 	if len(queue.queue) != 10 {
 		t.Error("Expected the queue slice size to still be 10")
 	}
+
+	// Make the queue size larger again, but not large than cap.
+	queue.Resize(8)
+	if queue.size != 8 {
+		t.Error("Expected the queue size to be 8")
+	}
+	if len(queue.queue) != 10 {
+		t.Error("Expected the queue slice size to still be 10")
+	}
 }
 
 func TestJobQueueResizeWithItems(t *testing.T) {
