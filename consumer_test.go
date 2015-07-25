@@ -294,6 +294,9 @@ func TestConsumerReserveWithDeadline(t *testing.T) {
 	consumer.Expect("stats-job 1") <- "OK 29\r\n---\n    pri: 1024\n    ttr: 3\n"
 	consumer.Expect("reserve-with-timeout 0") <- "DEADLINE_SOON"
 
+	// the DEADLINE_SOON response triggers a 1 second timeout.
+	time.Sleep(time.Second)
+
 	// A DEADLINE_SOON should simply trigger a new reserve.
 	consumer.Expect("reserve-with-timeout 0") <- "TIMED_OUT"
 }
