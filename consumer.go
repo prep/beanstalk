@@ -53,8 +53,9 @@ func (consumer *Consumer) Play() bool {
 		return false
 	}
 
-	if len(consumer.pause) != 0 {
-		<-consumer.pause
+	select {
+	case <-consumer.pause:
+	default:
 	}
 
 	consumer.pause <- false
@@ -71,8 +72,9 @@ func (consumer *Consumer) Pause() bool {
 		return false
 	}
 
-	if len(consumer.pause) != 0 {
-		<-consumer.pause
+	select {
+	case <-consumer.pause:
+	default:
 	}
 
 	consumer.pause <- true
