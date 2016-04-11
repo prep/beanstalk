@@ -105,8 +105,9 @@ func (consumer *Consumer) ResizeQueue(size int) bool {
 		return false
 	}
 
-	if len(consumer.resize) != 0 {
-		<-consumer.resize
+	select {
+	case <-consumer.resize:
+	default:
 	}
 
 	consumer.resize <- size
