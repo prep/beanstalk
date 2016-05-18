@@ -17,6 +17,7 @@ type JobQueueItem struct {
 	touchAt    time.Time
 }
 
+// NewJobQueueItem creates and returns a JobQueueItem.
 func NewJobQueueItem() *JobQueueItem {
 	item := &JobQueueItem{}
 	item.Clear()
