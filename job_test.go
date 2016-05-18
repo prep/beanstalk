@@ -8,8 +8,9 @@ import (
 func NewTestJob() *Job {
 	finishJob := make(chan *JobCommand)
 	go func() {
-		finish := <-finishJob
-		finish.Err <- nil
+		if finish, ok := <-finishJob; ok {
+			finish.Err <- nil
+		}
 	}()
 
 	return &Job{
@@ -62,6 +63,16 @@ func TestDoubleFinalizeJob(t *testing.T) {
 	}
 	if err := job.Delete(); err != ErrJobFinished {
 		t.Fatalf("Expected ErrJobFinished, but got: %s", err)
+	}
+
+}
+
+func TestConnectionLostOnJob(t *testing.T) {
+	job := NewTestJob()
+	close(job.Finish)
+
+	if err := job.Delete(); err != ErrLostConnection {
+		t.Fatalf("Expected ErrLostConnection, but got: %s", err)
 	}
 
 }

@@ -136,11 +136,13 @@ func (consumer *Consumer) reserveJob() (*Job, error) {
 // manager takes care of reserving, touching and bury/delete/release-ing of
 // beanstalk jobs.
 func (consumer *Consumer) manager(socket string, options *Options) {
-	var err error
-	var job *Job
-	var jobOffer chan<- *Job
-	var queueItem *JobQueueItem
-	var finishJob = make(chan *JobCommand)
+	var (
+		err       error
+		job       *Job
+		jobOffer  chan<- *Job
+		queueItem *JobQueueItem
+		finishJob chan *JobCommand
+	)
 
 	// This is used to pause the select-statement for a bit when the job queue
 	// is full or when "reserve-with-timeout 0" yields no job.
@@ -155,6 +157,9 @@ func (consumer *Consumer) manager(socket string, options *Options) {
 		options.LogError(format, a...)
 
 		if consumer.client != nil {
+			close(finishJob)
+			finishJob = nil
+
 			consumer.client.Close()
 			consumer.client = nil
 
@@ -210,6 +215,8 @@ func (consumer *Consumer) manager(socket string, options *Options) {
 					reconnect("Unable to ignore tube: %s", err)
 				}
 			}
+
+			finishJob = make(chan *JobCommand)
 
 		// Offer the job up on the shared jobs channel.
 		case jobOffer <- job:
@@ -270,6 +277,11 @@ func (consumer *Consumer) manager(socket string, options *Options) {
 
 		// Stop this consumer from running.
 		case <-consumer.stop:
+			if finishJob != nil {
+				close(finishJob)
+				finishJob = nil
+			}
+
 			// If a client connection is up, release all jobs in the queue.
 			if consumer.client != nil {
 				for _, job = range consumer.queue.Jobs() {

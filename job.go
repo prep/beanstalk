@@ -5,9 +5,11 @@ import (
 	"time"
 )
 
-// ErrJobFinished gets returned on any of a Job's public functions, when the
-// Job was already finished by a previous call.
-var ErrJobFinished = errors.New("Job was already finished")
+// The errors that can be returned by any of the Job functions.
+var (
+	ErrJobFinished    = errors.New("Job was already finished")
+	ErrLostConnection = errors.New("The connection was lost")
+)
 
 // Command describes a beanstalk command that finishes a reserved job.
 type Command int
@@ -38,7 +40,13 @@ type Job struct {
 	Finish   chan<- *JobCommand
 }
 
-func (job *Job) finishJob(command Command, priority uint32, delay time.Duration) error {
+func (job *Job) finishJob(command Command, priority uint32, delay time.Duration) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = ErrLostConnection
+		}
+	}()
+
 	if job.Finish == nil {
 		return ErrJobFinished
 	}
