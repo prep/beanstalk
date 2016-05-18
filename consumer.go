@@ -126,19 +126,11 @@ func (consumer *Consumer) reserveJob() (*Job, error) {
 		return nil, nil
 	}
 
-	var job *Job
-	var err error
-
 	if consumer.queue.IsEmpty() {
-		job, err = consumer.client.Reserve(consumer.options.ReserveTimeout)
-	} else {
-		job, err = consumer.client.Reserve(0)
-	}
-	if err != nil {
-		return nil, err
+		return consumer.client.Reserve(consumer.options.ReserveTimeout)
 	}
 
-	return job, nil
+	return consumer.client.Reserve(0)
 }
 
 // manager takes care of reserving, touching and bury/delete/release-ing of
