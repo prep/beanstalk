@@ -85,3 +85,18 @@ func (job *Job) Release() error {
 func (job *Job) ReleaseWithParams(priority uint32, delay time.Duration) error {
 	return job.finishJob(Release, priority, delay)
 }
+
+// TouchAfter returns the time after which this job needs to be touched in
+// order to remain reserved on the beantalk server.
+func (job *Job) TouchAfter() time.Duration {
+	switch {
+	case job.TTR <= time.Second:
+		return time.Duration(800 * time.Millisecond)
+
+	case job.TTR < 60*time.Second:
+		return job.TTR - time.Second
+
+	default:
+		return job.TTR - (3 * time.Second)
+	}
+}

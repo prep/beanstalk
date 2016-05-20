@@ -8,7 +8,6 @@ import (
 // DefaultOptions returns an Options object with default values.
 func DefaultOptions() *Options {
 	return &Options{
-		QueueSize:        1,
 		ReserveTimeout:   time.Second,
 		ReconnectTimeout: time.Second * 3,
 	}
@@ -16,10 +15,6 @@ func DefaultOptions() *Options {
 
 // Options define the configurable parts of the Client, Consumers and Producers.
 type Options struct {
-	// QueueSize defines how many reserved jobs a single Consumer object is
-	// allowed to maintain.
-	QueueSize int
-
 	// ReserveTimeout is the maximum amount of time (in seconds) a reserve call
 	// is allowed to block.
 	ReserveTimeout time.Duration
