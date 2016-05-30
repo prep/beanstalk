@@ -55,9 +55,19 @@ func (job *Job) cmd(command Command, priority uint32, delay time.Duration) (err 
 		return ErrJobFinished
 	}
 
-	jobCommand := &JobCommand{Command: command, Job: job, Priority: priority, Delay: delay, Err: make(chan error)}
+	jobCommand := &JobCommand{
+		Command:  command,
+		Job:      job,
+		Priority: priority,
+		Delay:    delay,
+		Err:      make(chan error),
+	}
+
 	job.commandC <- jobCommand
-	job.commandC = nil
+	if command != Touch {
+		job.commandC = nil
+	}
+
 	return <-jobCommand.Err
 }
 
