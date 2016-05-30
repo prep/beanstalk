@@ -6,18 +6,20 @@ import (
 )
 
 func NewTestJob() *Job {
-	finishJob := make(chan *JobCommand)
+	commandC := make(chan *JobCommand)
 	go func() {
-		if finish, ok := <-finishJob; ok {
-			finish.Err <- nil
+		if req, ok := <-commandC; ok {
+			req.Err <- nil
+		} else {
+			return
 		}
 	}()
 
 	return &Job{
-		ID:     12345,
-		Body:   []byte("Hello World"),
-		TTR:    time.Duration(1),
-		Finish: finishJob,
+		ID:       12345,
+		Body:     []byte("Hello World"),
+		TTR:      time.Duration(1),
+		commandC: commandC,
 	}
 }
 
@@ -69,7 +71,7 @@ func TestDoubleFinalizeJob(t *testing.T) {
 
 func TestConnectionLostOnJob(t *testing.T) {
 	job := NewTestJob()
-	close(job.Finish)
+	close(job.commandC)
 
 	if err := job.Delete(); err != ErrLostConnection {
 		t.Fatalf("Expected ErrLostConnection, but got: %s", err)

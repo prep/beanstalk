@@ -137,13 +137,18 @@ func (client *Client) Reserve(timeout time.Duration) (*Job, error) {
 		}
 	}
 
+	job.touched()
 	return job, nil
 }
 
 // Touch a job to extend the TTR of the reserved job.
 func (client *Client) Touch(job *Job) error {
-	_, _, err := client.requestResponse("touch %d", job.ID)
-	return err
+	if _, _, err := client.requestResponse("touch %d", job.ID); err != nil {
+		return err
+	}
+
+	job.touched()
+	return nil
 }
 
 // Use the specified tube for the upcoming put requests.

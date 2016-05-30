@@ -142,6 +142,8 @@ func (consumer *Consumer) connectionManager(socket string) {
 	}
 }
 
+// clientManager is responsible for reserving beanstalk jobs and offering them
+// up the the job channel.
 func (consumer *Consumer) clientManager(client *Client) (err error) {
 	var (
 		job          *Job
@@ -150,23 +152,36 @@ func (consumer *Consumer) clientManager(client *Client) (err error) {
 		jobsOutThere int
 	)
 
+	// This is used to pause the select-statement for a bit when the job queue
+	// is full or when "reserve-with-timeout 0" yields no job.
+	timeout := time.NewTimer(time.Second)
+	timeout.Stop()
+
+	// Set up a touch timer that fires whenever the pending reserved job needs
+	// to be touched to keep the reservation on that job.
+	touchTimer := time.NewTimer(time.Second)
+	touchTimer.Stop()
+
+	// Whenever this function returns, clean up the pending job and close the
+	// client connection.
 	defer func() {
 		if job != nil {
 			client.Release(job, job.Priority, 0)
 		}
 
 		client.Close()
+		touchTimer.Stop()
 		close(jobCommandC)
 	}()
 
-	// This is used to pause the select-statement for a bit when the job queue
-	// is full or when "reserve-with-timeout 0" yields no job.
-	timeout := time.NewTimer(time.Second)
-	timeout.Stop()
-
-	// This timer is used to trigger a touch event for a pending job.
-	touch := time.NewTimer(time.Second)
-	touch.Stop()
+	// isFatalErr is a convenience function that checks if the returned error
+	// from a beanstalk command is fatal, or can be ignored.
+	isFatalErr := func() bool {
+		if err == ErrNotFound {
+			err = nil
+		}
+		return err != nil
+	}
 
 	for {
 		// Attempt to reserve a job if the state allows for it.
@@ -184,13 +199,13 @@ func (consumer *Consumer) clientManager(client *Client) (err error) {
 				timeout.Reset(time.Second)
 			case err != nil:
 				consumer.options.LogError("Error reserving job: %s", err)
-				return err
+				return
 
 			// A new job was reserved.
 			case job != nil:
-				job.Finish = jobCommandC
+				job.commandC = jobCommandC
 				jobOffer = consumer.jobC
-				touch.Reset(job.TouchAfter())
+				touchTimer.Reset(job.TouchAt())
 
 			// With jobs out there and no successful reserve, wait a bit before
 			// attempting another reserve.
@@ -210,43 +225,52 @@ func (consumer *Consumer) clientManager(client *Client) (err error) {
 		// Offer the job up on the shared jobs channel.
 		case jobOffer <- job:
 			job, jobOffer = nil, nil
+			touchTimer.Stop()
 			jobsOutThere++
-			touch.Stop()
 
 		// Wait a bit before trying to reserve a job again, or just fall through.
 		case <-timeout.C:
 
-		// Touch the pending job to make sure it doesn't expire.
-		case <-touch.C:
+			// Touch the pending job to make sure it doesn't expire.
+		case <-touchTimer.C:
 			if job != nil {
-				if err := client.Touch(job); err != nil {
+				if err = client.Touch(job); err != nil {
 					consumer.options.LogError("Unable to touch job %d: %s", job.ID, err)
-
-					if err != ErrNotFound {
-						return err
+					if isFatalErr() {
+						return
 					}
-				}
 
-				touch.Reset(job.TouchAfter())
+					job, jobOffer = nil, nil
+				} else {
+					touchTimer.Reset(job.TouchAt())
+				}
 			}
 
 		// Bury, delete or release a reserved job.
 		case req := <-jobCommandC:
-			switch req.Command {
-			case Bury:
-				err = client.Bury(req.Job, req.Priority)
-			case Delete:
-				err = client.Delete(req.Job)
-			case Release:
-				err = client.Release(req.Job, req.Priority, req.Delay)
+			if req.Command == Touch {
+				if err = client.Touch(req.Job); err != nil {
+					consumer.options.LogError("Unable to touch job %d: %s", req.Job.ID, err)
+				}
+			} else {
+				switch req.Command {
+				case Bury:
+					err = client.Bury(req.Job, req.Priority)
+				case Delete:
+					err = client.Delete(req.Job)
+				case Release:
+					err = client.Release(req.Job, req.Priority, req.Delay)
+				}
+
+				jobsOutThere--
+				if err != nil {
+					consumer.options.LogError("Unable to finish job %d: %s", req.Job.ID, err)
+				}
 			}
 
-			jobsOutThere--
 			req.Err <- err
-
-			consumer.options.LogError("Error finalizing job %d: %s", req.Job.ID, err)
-			if err != nil && err != ErrNotFound {
-				return err
+			if isFatalErr() {
+				return
 			}
 
 		// Pause or unpause this connection.
@@ -254,12 +278,12 @@ func (consumer *Consumer) clientManager(client *Client) (err error) {
 			if consumer.isPaused && job != nil {
 				if err = client.Release(job, job.Priority, 0); err != nil {
 					consumer.options.LogError("Unable to release job %d: %s", job.ID, err)
+					if isFatalErr() {
+						return
+					}
 				}
 
-				job = nil
-				if err != ErrNotFound {
-					return err
-				}
+				job, jobOffer = nil, nil
 			}
 
 		// Stop this connection and close this consumer down.

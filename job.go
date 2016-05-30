@@ -2,6 +2,7 @@ package beanstalk
 
 import (
 	"errors"
+	"sync"
 	"time"
 )
 
@@ -19,6 +20,7 @@ const (
 	Bury Command = iota
 	Delete
 	Release
+	Touch
 )
 
 // JobCommand is sent to the consumer that reserved the job with the purpose
@@ -33,70 +35,89 @@ type JobCommand struct {
 
 // Job contains the data of a reserved job.
 type Job struct {
-	ID       uint64
-	Body     []byte
-	Priority uint32
-	TTR      time.Duration
-	Finish   chan<- *JobCommand
+	ID        uint64
+	Body      []byte
+	Priority  uint32
+	TTR       time.Duration
+	touchedAt time.Time
+	commandC  chan<- *JobCommand
+	sync.Mutex
 }
 
-func (job *Job) finishJob(command Command, priority uint32, delay time.Duration) (err error) {
+func (job *Job) cmd(command Command, priority uint32, delay time.Duration) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = ErrLostConnection
 		}
 	}()
 
-	if job.Finish == nil {
+	if job.commandC == nil {
 		return ErrJobFinished
 	}
 
 	jobCommand := &JobCommand{Command: command, Job: job, Priority: priority, Delay: delay, Err: make(chan error)}
-	job.Finish <- jobCommand
-	job.Finish = nil
+	job.commandC <- jobCommand
+	job.commandC = nil
 	return <-jobCommand.Err
 }
 
 // Bury tells the consumer to bury this job with the same priority as this job
 // was inserted with.
 func (job *Job) Bury() error {
-	return job.finishJob(Bury, job.Priority, 0)
+	return job.cmd(Bury, job.Priority, 0)
 }
 
 // BuryWithPriority tells the consumer to bury this job with the specified
 // priority.
 func (job *Job) BuryWithPriority(priority uint32) error {
-	return job.finishJob(Bury, priority, 0)
+	return job.cmd(Bury, priority, 0)
 }
 
 // Delete tells the consumer to delete this job.
 func (job *Job) Delete() error {
-	return job.finishJob(Delete, 0, 0)
+	return job.cmd(Delete, 0, 0)
 }
 
 // Release tells the consumer to release this job with the same priority as
 // this job was inserted with and without delay.
 func (job *Job) Release() error {
-	return job.finishJob(Release, job.Priority, 0)
+	return job.cmd(Release, job.Priority, 0)
 }
 
 // ReleaseWithParams tells the consumer to release this job with the specified
 // priority and delay.
 func (job *Job) ReleaseWithParams(priority uint32, delay time.Duration) error {
-	return job.finishJob(Release, priority, delay)
+	return job.cmd(Release, priority, delay)
 }
 
-// TouchAfter returns the time after which this job needs to be touched in
-// order to remain reserved on the beantalk server.
-func (job *Job) TouchAfter() time.Duration {
+// Touch refreshes the reserve timer for this job.
+func (job *Job) Touch() error {
+	return job.cmd(Touch, 0, 0)
+}
+
+// Mark the time this job was touched.
+func (job *Job) touched() {
+	job.Lock()
+	job.touchedAt = time.Now().UTC()
+	job.Unlock()
+}
+
+// TouchAt returns the duration after which a call to Touch() should be
+// triggered in order to keep the job reserved.
+func (job *Job) TouchAt() time.Duration {
+	var margin time.Duration
+
 	switch {
-	case job.TTR <= time.Second:
-		return time.Duration(800 * time.Millisecond)
-
+	case job.TTR <= 3*time.Second:
+		margin = 800 * time.Millisecond
 	case job.TTR < 60*time.Second:
-		return job.TTR - time.Second
-
+		margin = time.Second
 	default:
-		return job.TTR - (3 * time.Second)
+		margin = 3 * time.Second
 	}
+
+	job.Lock()
+	defer job.Unlock()
+
+	return job.touchedAt.Add(job.TTR - margin).Sub(time.Now().UTC())
 }

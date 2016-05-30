@@ -1,8 +1,10 @@
 package beanstalk
 
 import (
+	"log"
 	"net"
 	"net/textproto"
+	"os"
 	"testing"
 	"time"
 )
@@ -30,6 +32,7 @@ func NewTestConsumer(t *testing.T) *TestConsumer {
 	options := &Options{
 		ReserveTimeout:   time.Second,
 		ReconnectTimeout: time.Second * 3,
+		ErrorLog:         log.New(os.Stdout, "ERROR: ", 0),
 	}
 
 	consumer := &TestConsumer{
