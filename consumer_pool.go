@@ -4,17 +4,21 @@ import "sync"
 
 // ConsumerPool maintains a pool of Consumer objects.
 type ConsumerPool struct {
-	C         chan *Job
+	// The channel on which newly reserved jobs are offered.
+	C <-chan *Job
+
+	c         chan *Job
 	consumers []*Consumer
 	sync.Mutex
 }
 
 // NewConsumerPool creates a pool of Consumer objects.
 func NewConsumerPool(sockets []string, tubes []string, options *Options) *ConsumerPool {
-	pool := &ConsumerPool{C: make(chan *Job)}
+	c := make(chan *Job)
+	pool := &ConsumerPool{C: c, c: c}
 
 	for _, socket := range sockets {
-		pool.consumers = append(pool.consumers, NewConsumer(socket, tubes, pool.C, options))
+		pool.consumers = append(pool.consumers, NewConsumer(socket, tubes, pool.c, options))
 	}
 
 	return pool
