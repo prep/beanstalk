@@ -66,9 +66,12 @@ By default, *Consumer{}* and *ConsumerPool{}* objects start out in a paused stat
 
 Jobs
 ----
-When you receive a job on your consumer channel, it is your responsibility to honor the TTR of that job. To do that
+When you receive a job on your consumer channel, it is your responsibility to honor the TTR of that job. To do that, you call the `TouchAt()` function to get the remaining TTR of the current job, which has a margin built in for safety. You can use the `Touch()` function to refresh the TTR of that job.
 
-When you receive a job on your consumer channel, you don't need to worry about the TTR of that job. Each *Consumer{}* object will maintain a reservation of that job by touching it on the beanstalk server until you've finalized it.
+```go
+Touch() error
+TouchAt() time.Duration
+```
 
 To finalize a job, the following functions are available on the *Job{}* object:
 ```go
@@ -83,7 +86,7 @@ The *Bury()* and *Release()* functions use the priority with which the job was i
 
 Options
 -------
-An **Options** struct can be provided at the end of each *NewProducer()*, *NewProducerPool()*, *NewConsumer()* and *NewConsumerPool()* function. It allows you to finetune some behaviour under the hood.
+An **Options** struct can be provided at the end of each *NewProducer()*, *NewProducerPool()*, *NewConsumer()* and *NewConsumerPool()* function. It allows you to fine-tune some behaviour under the hood.
 
 ```go
 options := &beanstalk.Options{
