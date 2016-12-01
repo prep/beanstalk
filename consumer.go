@@ -231,7 +231,7 @@ func (consumer *Consumer) clientManager(client *Client) (err error) {
 		// Wait a bit before trying to reserve a job again, or just fall through.
 		case <-timeout.C:
 
-			// Touch the pending job to make sure it doesn't expire.
+		// Touch the pending job to make sure it doesn't expire.
 		case <-touchTimer.C:
 			if job != nil {
 				if err = client.Touch(job); err != nil {
