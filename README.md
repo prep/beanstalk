@@ -66,7 +66,18 @@ By default, *Consumer{}* and *ConsumerPool{}* objects start out in a paused stat
 
 Jobs
 ----
-When you receive a job on your consumer channel, it is your responsibility to honor the TTR of that job. To do that, you call the `TouchAt()` function to get the remaining TTR of the current job, which has a margin built in for safety. You can use the `Touch()` function to refresh the TTR of that job.
+Jobs are offered on your consumer channel and it looks like this:
+
+```go
+type Job struct {
+	ID        uint64
+	Body      []byte
+	Priority  uint32
+	TTR       time.Duration
+}
+```
+
+When you receive a *Job{}* on your consumer channel, it is your responsibility to honor the TTR of that job. To do that, you call the *TouchAt()* function to get the remaining TTR of the current job, which has a margin built in for safety. You can use the *Touch()* function to refresh the TTR of that job.
 
 ```go
 Touch() error
