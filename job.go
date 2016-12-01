@@ -119,7 +119,7 @@ func (job *Job) TouchAt() time.Duration {
 
 	switch {
 	case job.TTR <= 3*time.Second:
-		margin = 800 * time.Millisecond
+		margin = 200 * time.Millisecond
 	case job.TTR < 60*time.Second:
 		margin = time.Second
 	default:
