@@ -1,4 +1,6 @@
 Beanstalk client for Go
+[![Go Report Card](https://goreportcard.com/badge/github.com/prep/beanstalk)](https://goreportcard.com/report/github.com/prep/beanstalk)
+[![GoDoc](https://godoc.org/github.com/prep/beanstalk?status.svg)](https://godoc.org/github.com/prep/beanstalk)
 =======================
 This repository contains a beanstalk package for Go that works with producers to insert jobs into a beanstalk tube, and consumers to reserve and delete jobs from a beanstalk tube. Pools with multiple producers and consumers can be created to balance the requests over multiple connections.
 
