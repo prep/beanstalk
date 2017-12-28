@@ -126,7 +126,6 @@ producerPool := beanstalk.NewProducerPool([]string{"127.0.0.1:11300"}, options)
 consumerPool := beanstalk.NewConsumerPool([]string{"127.0.0.1:11300"}, []string{"test"}, options)
 ```
 
-
 License
 -------
-This software is created for MessageBird B.V. and licensed under [The ISC License](http://opensource.org/licenses/ISC). Copyright (c) 2015, Maurice Nonnekes <maurice@messagebird.com>.
+This software is created for MessageBird B.V. and distributed under the BSD-style license found in the LICENSE file.
