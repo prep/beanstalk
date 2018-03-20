@@ -4,7 +4,6 @@ import "sync"
 
 // Producer puts the jobs it receives on its channel into beanstalk.
 type Producer struct {
-	client    *Client
 	putC      chan *Put
 	stop      chan struct{}
 	isStopped bool

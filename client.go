@@ -109,7 +109,10 @@ func (client *Client) Reserve(timeout time.Duration) (*Job, error) {
 
 	// Set a read deadline that is slightly longer than the reserve timeout.
 	if timeout != 0 {
-		client.conn.SetReadDeadline(time.Now().Add(timeout + time.Second))
+		if err = client.conn.SetReadDeadline(time.Now().Add(timeout + time.Second)); err != nil {
+			return nil, err
+		}
+
 		defer client.conn.SetReadDeadline(time.Time{})
 	}
 
@@ -166,7 +169,10 @@ func (client *Client) Watch(tube string) error {
 // request sends a request to the beanstalk server.
 func (client *Client) request(format string, args ...interface{}) error {
 	if client.options.ReadWriteTimeout != 0 {
-		client.conn.SetWriteDeadline(time.Now().Add(client.options.ReadWriteTimeout))
+		if err := client.conn.SetWriteDeadline(time.Now().Add(client.options.ReadWriteTimeout)); err != nil {
+			return err
+		}
+
 		defer client.conn.SetWriteDeadline(time.Time{})
 	}
 
@@ -292,7 +298,10 @@ func (client *Client) requestResponse(format string, args ...interface{}) (uint6
 	}
 
 	if client.options.ReadWriteTimeout != 0 {
-		client.conn.SetReadDeadline(time.Now().Add(client.options.ReadWriteTimeout))
+		if err := client.conn.SetReadDeadline(time.Now().Add(client.options.ReadWriteTimeout)); err != nil {
+			return 0, nil, err
+		}
+
 		defer client.conn.SetReadDeadline(time.Time{})
 	}
 

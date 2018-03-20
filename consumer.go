@@ -16,7 +16,6 @@ type Consumer struct {
 	isPaused  bool
 	isStopped bool
 	options   *Options
-	client    *Client
 	sync.Mutex
 }
 
