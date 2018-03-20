@@ -12,16 +12,25 @@ type ProducerPool struct {
 }
 
 // NewProducerPool creates a pool of Producer objects.
-func NewProducerPool(sockets []string, options *Options) *ProducerPool {
+func NewProducerPool(urls []string, options *Options) (*ProducerPool, error) {
 	pool := &ProducerPool{putC: make(chan *Put)}
-	pool.putTokens = make(chan *Put, len(sockets))
+	pool.putTokens = make(chan *Put, len(urls))
 
-	for _, socket := range sockets {
-		pool.producers = append(pool.producers, NewProducer(socket, pool.putC, options))
+	for _, url := range urls {
+		producer, err := NewProducer(url, pool.putC, options)
+		if err != nil {
+			return nil, err
+		}
+
+		pool.producers = append(pool.producers, producer)
 		pool.putTokens <- NewPut(pool.putC, options)
 	}
 
-	return pool
+	for _, producer := range pool.producers {
+		producer.Start()
+	}
+
+	return pool, nil
 }
 
 // Stop shuts down all the producers in the pool.

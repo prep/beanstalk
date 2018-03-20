@@ -9,6 +9,7 @@ import (
 // Consumer reserves jobs from a beanstalk server and keeps those jobs alive
 // until an external consumer has either buried, deleted or released it.
 type Consumer struct {
+	url       string
 	tubes     []string
 	jobC      chan<- *Job
 	pause     chan bool
@@ -16,26 +17,51 @@ type Consumer struct {
 	isPaused  bool
 	isStopped bool
 	options   *Options
+	startOnce sync.Once
 	sync.Mutex
 }
 
 // NewConsumer returns a new Consumer object.
-func NewConsumer(socket string, tubes []string, jobC chan<- *Job, options *Options) *Consumer {
+func NewConsumer(url string, tubes []string, jobC chan<- *Job, options *Options) (*Consumer, error) {
 	if options == nil {
 		options = DefaultOptions()
 	}
 
-	consumer := &Consumer{
+	if _, _, err := ParseURL(url); err != nil {
+		return nil, err
+	}
+
+	return &Consumer{
+		url:      url,
 		tubes:    tubes,
 		jobC:     jobC,
 		pause:    make(chan bool, 1),
 		stop:     make(chan struct{}, 1),
 		isPaused: true,
 		options:  options,
+	}, nil
+}
+
+// Start this consumer.
+func (consumer *Consumer) Start() {
+	consumer.startOnce.Do(func() {
+		go consumer.connectionManager()
+	})
+}
+
+// Stop this consumer. Returns true on success and false if this consumer was
+// already stopped.
+func (consumer *Consumer) Stop() bool {
+	consumer.Lock()
+	defer consumer.Unlock()
+
+	if consumer.isStopped {
+		return false
 	}
 
-	go consumer.connectionManager(socket)
-	return consumer
+	consumer.isStopped = true
+	consumer.stop <- struct{}{}
+	return true
 }
 
 // Play allows this consumer to start reserving jobs. Returns true on success
@@ -76,32 +102,17 @@ func (consumer *Consumer) Pause() bool {
 	return true
 }
 
-// Stop this consumer. Returns true on success and false if this consumer was
-// already stopped.
-func (consumer *Consumer) Stop() bool {
-	consumer.Lock()
-	defer consumer.Unlock()
-
-	if consumer.isStopped {
-		return false
-	}
-
-	consumer.isStopped = true
-	consumer.stop <- struct{}{}
-	return true
-}
-
 // connectionManager is responsible for setting up a connection to the
 // beanstalk server and wrapping it in a Client, which on success is passed
 // to the clientManager function.
-func (consumer *Consumer) connectionManager(socket string) {
+func (consumer *Consumer) connectionManager() {
 	var (
 		err     error
 		options = consumer.options
 	)
 
 	// Start a new connection.
-	newConnection, abortConnect := Connect(socket, consumer.options)
+	newConnection, abortConnect := connect(consumer.url, consumer.options)
 
 	for {
 		select {
@@ -124,7 +135,7 @@ func (consumer *Consumer) connectionManager(socket string) {
 			}
 
 			if err := consumer.clientManager(client); err != nil {
-				newConnection, abortConnect = Connect(socket, consumer.options)
+				newConnection, abortConnect = connect(consumer.url, consumer.options)
 			} else {
 				return
 			}
@@ -165,7 +176,9 @@ func (consumer *Consumer) clientManager(client *Client) (err error) {
 	// client connection.
 	defer func() {
 		if job != nil {
-			client.Release(job, job.Priority, 0)
+			if e := client.Release(job, job.Priority, 0); e != nil {
+				consumer.options.LogError("Unable to finish job %d: %s", job.ID, err)
+			}
 		}
 
 		client.Close()

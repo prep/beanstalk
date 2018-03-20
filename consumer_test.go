@@ -35,8 +35,14 @@ func NewTestConsumer(t *testing.T) *TestConsumer {
 		ErrorLog:         log.New(os.Stdout, "ERROR: ", 0),
 	}
 
-	consumer := &TestConsumer{
-		Consumer:    NewConsumer(listener.Addr().String(), []string{"test"}, jobC, options),
+	consumer, err := NewConsumer("beanstalk://"+listener.Addr().String(), []string{"test"}, jobC, options)
+	if err != nil {
+		panic("Unable to create consumer: " + err.Error())
+	}
+	consumer.Start()
+
+	testConsumer := &TestConsumer{
+		Consumer:    consumer,
 		t:           t,
 		listener:    listener,
 		offeredJobC: jobC,
@@ -44,10 +50,10 @@ func NewTestConsumer(t *testing.T) *TestConsumer {
 		responseC:   make(chan string),
 	}
 
-	go consumer.acceptNewConnections()
+	go testConsumer.acceptNewConnections()
+	testConsumer.ExpectWatchAndIgnore()
 
-	consumer.ExpectWatchAndIgnore()
-	return consumer
+	return testConsumer
 }
 
 func (consumer *TestConsumer) Close() {

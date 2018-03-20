@@ -23,7 +23,7 @@ type Options struct {
 	ReconnectTimeout time.Duration
 
 	// ReadWriteTimeout is the time a read or write operation on the beanstalk
-	// socket is given before it should unblock.
+	// connection is given before it should unblock.
 	ReadWriteTimeout time.Duration
 
 	// LogPrefix is a string that gets prepending to every line that is written

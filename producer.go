@@ -4,25 +4,38 @@ import "sync"
 
 // Producer puts the jobs it receives on its channel into beanstalk.
 type Producer struct {
+	url       string
 	putC      chan *Put
 	stop      chan struct{}
 	isStopped bool
+	options   *Options
+	startOnce sync.Once
 	sync.Mutex
 }
 
 // NewProducer returns a new Producer object.
-func NewProducer(socket string, putC chan *Put, options *Options) *Producer {
+func NewProducer(url string, putC chan *Put, options *Options) (*Producer, error) {
 	if options == nil {
 		options = DefaultOptions()
 	}
 
-	producer := &Producer{
-		putC: putC,
-		stop: make(chan struct{}, 1),
+	if _, _, err := ParseURL(url); err != nil {
+		return nil, err
 	}
 
-	go producer.manager(socket, options)
-	return producer
+	return &Producer{
+		url:     url,
+		putC:    putC,
+		stop:    make(chan struct{}, 1),
+		options: options,
+	}, nil
+}
+
+// Start this producer.
+func (producer *Producer) Start() {
+	producer.startOnce.Do(func() {
+		go producer.manager()
+	})
 }
 
 // Stop this producer. Return true on success and false if this producer was
@@ -42,23 +55,23 @@ func (producer *Producer) Stop() bool {
 
 // manager is responsible for accepting new put requests and inserting them
 // into beanstalk.
-func (producer *Producer) manager(socket string, options *Options) {
+func (producer *Producer) manager() {
 	var client *Client
 	var lastTube string
 	var putC chan *Put
 
 	// Set up a new connection.
-	newConnection, abortConnect := Connect(socket, options)
+	newConnection, abortConnect := connect(producer.url, producer.options)
 
 	// Close the client and reconnect.
 	reconnect := func(format string, a ...interface{}) {
-		options.LogError(format, a...)
+		producer.options.LogError(format, a...)
 
 		if client != nil {
 			client.Close()
 			client, putC, lastTube = nil, nil, ""
-			options.LogInfo("Producer connection closed. Reconnecting")
-			newConnection, abortConnect = Connect(socket, options)
+			producer.options.LogInfo("Producer connection closed. Reconnecting")
+			newConnection, abortConnect = connect(producer.url, producer.options)
 		}
 	}
 
@@ -66,7 +79,7 @@ func (producer *Producer) manager(socket string, options *Options) {
 		select {
 		// Set up a new beanstalk client connection.
 		case conn := <-newConnection:
-			client, abortConnect = NewClient(conn, options), nil
+			client, abortConnect = NewClient(conn, producer.options), nil
 			putC = producer.putC
 
 		// This case handles new 'put' requests.

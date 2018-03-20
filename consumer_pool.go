@@ -2,26 +2,36 @@ package beanstalk
 
 import "sync"
 
-// ConsumerPool maintains a pool of Consumer objects.
+// ConsumerPool maintains a pool of beanstalk consumers.
 type ConsumerPool struct {
-	// The channel on which newly reserved jobs are offered.
-	C <-chan *Job
-
+	// C offers up newly reserved beanstalk jobs.
+	C         <-chan *Job
 	c         chan *Job
 	consumers []*Consumer
 	sync.Mutex
 }
 
-// NewConsumerPool creates a pool of Consumer objects.
-func NewConsumerPool(sockets []string, tubes []string, options *Options) *ConsumerPool {
-	c := make(chan *Job)
-	pool := &ConsumerPool{C: c, c: c}
+// NewConsumerPool creates a pool of beanstalk consumers.
+func NewConsumerPool(urls []string, tubes []string, options *Options) (*ConsumerPool, error) {
+	jobC := make(chan *Job)
+	pool := &ConsumerPool{C: jobC, c: jobC}
 
-	for _, socket := range sockets {
-		pool.consumers = append(pool.consumers, NewConsumer(socket, tubes, pool.c, options))
+	// Create a consumer for each URL.
+	for _, url := range urls {
+		consumer, err := NewConsumer(url, tubes, jobC, options)
+		if err != nil {
+			return nil, err
+		}
+
+		pool.consumers = append(pool.consumers, consumer)
 	}
 
-	return pool
+	// Start all the consumers.
+	for _, consumer := range pool.consumers {
+		consumer.Start()
+	}
+
+	return pool, nil
 }
 
 // Stop shuts down all the consumers in the pool.
