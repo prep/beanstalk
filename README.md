@@ -22,7 +22,10 @@ A ProducerPool creates 1 or more producers that connects to a beanstalk server w
 
 ```go
 // Create a producer pool with 1 producer.
-pool := beanstalk.NewProducerPool([]string{"127.0.0.1:11300"}, nil)
+pool, err := beanstalk.NewProducerPool([]string{"beanstalk://127.0.0.1:11300"}, nil)
+if err != nil {
+  log.Fatal("Unable to create beanstalk producer pool: %s", err)
+}
 defer pool.Stop()
 
 // Reusable put parameters.
@@ -42,7 +45,10 @@ A ConsumerPool creates 1 or more consumers that connects to a beanstalk server w
 
 ```go
 // Create a consumer pool with 1 consumer, watching 1 tube.
-pool := beanstalk.NewConsumerPool([]string{"127.0.0.1:11300"}, []string{"test"}, nil)
+pool, err := beanstalk.NewConsumerPool([]string{"beanstalk://127.0.0.1:11300"}, []string{"test"}, nil)
+if err != nil {
+  log.Fatal("Unable to create beanstalk consumer pool: %s", err)
+}
 defer pool.Stop()
 
 pool.Play()
@@ -122,8 +128,8 @@ options := &beanstalk.Options{
   ErrorLog: log.New(os.Stderr, "ERROR: ", 0),
 }
 
-producerPool := beanstalk.NewProducerPool([]string{"127.0.0.1:11300"}, options)
-consumerPool := beanstalk.NewConsumerPool([]string{"127.0.0.1:11300"}, []string{"test"}, options)
+producerPool, _ := beanstalk.NewProducerPool([]string{"beanstalk://127.0.0.1:11300"}, options)
+consumerPool, _ := beanstalk.NewConsumerPool([]string{"beanstalk://127.0.0.1:11300"}, []string{"test"}, options)
 ```
 
 License
