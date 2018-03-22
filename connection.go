@@ -14,33 +14,14 @@ import (
 func connect(URL string, options *Options) (<-chan net.Conn, chan<- struct{}) {
 	newConnection, abortConnect := make(chan net.Conn), make(chan struct{}, 1)
 
-	socket, useTLS, _ := ParseURL(URL)
-
-	go func() {
-		// dial tries to set up either a non-TLS or a TLS connection to the
-		// host:port combo specified in socket.
-		dial := func() (net.Conn, error) {
-			if !useTLS {
-				return net.Dial("tcp", socket)
-			}
-
-			c, err := tls.Dial("tcp", socket, &tls.Config{})
-			if c != nil {
-				if err = c.Handshake(); err == nil {
-					return c, nil
-				}
-			}
-
-			return nil, err
-		}
-
+	go func(URL string, options *Options) {
 		var offerC chan net.Conn
 		var retry = time.NewTimer(time.Second)
 		retry.Stop()
 
 		// Try to establish a connection to the remote beanstalk server.
 		for {
-			conn, err := dial()
+			conn, err := dial(URL, options)
 			if err != nil {
 				retry.Reset(options.ReconnectTimeout)
 				options.LogError("Beanstalk connection failed to %s: %s", URL, err)
@@ -62,9 +43,31 @@ func connect(URL string, options *Options) (<-chan net.Conn, chan<- struct{}) {
 				return
 			}
 		}
-	}()
+	}(URL, options)
 
 	return newConnection, abortConnect
+}
+
+// dial tries to set up either a non-TLS or a TLS connection to the host:port
+// combo specified in socket.
+func dial(URL string, options *Options) (net.Conn, error) {
+	socket, useTLS, err := ParseURL(URL)
+	if err != nil {
+		return nil, err
+	}
+
+	if !useTLS {
+		return net.Dial("tcp", socket)
+	}
+
+	conn, err := tls.Dial("tcp", socket, &tls.Config{})
+	if conn != nil {
+		if err = conn.Handshake(); err == nil {
+			return conn, nil
+		}
+	}
+
+	return nil, err
 }
 
 // ParseURL takes a beanstalk URL and returns its hostname:port combination
