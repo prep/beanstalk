@@ -12,13 +12,13 @@ type urlTest struct {
 }
 
 var urls = []urlTest{
-	urlTest{URL: "beanstalk://test.com", Socket: "test.com:11300", UseTLS: false, Err: false},
-	urlTest{URL: "beanstalk://test.com:11300", Socket: "test.com:11300", UseTLS: false, Err: false},
-	urlTest{URL: "beanstalks://test.com:10301", Socket: "test.com:10301", UseTLS: true, Err: false},
-	urlTest{URL: "tls://test:1234", Socket: "test:1234", UseTLS: true, Err: false},
-	urlTest{URL: "http://localhost:11300", Socket: "", UseTLS: false, Err: true},
-	urlTest{URL: "localhost:11300", Socket: "", UseTLS: false, Err: true},
-	urlTest{URL: "foobar", Socket: "", UseTLS: false, Err: true},
+	{URL: "beanstalk://test.com", Socket: "test.com:11300", UseTLS: false, Err: false},
+	{URL: "beanstalk://test.com:11300", Socket: "test.com:11300", UseTLS: false, Err: false},
+	{URL: "beanstalks://test.com:10301", Socket: "test.com:10301", UseTLS: true, Err: false},
+	{URL: "tls://test:1234", Socket: "test:1234", UseTLS: true, Err: false},
+	{URL: "http://localhost:11300", Socket: "", UseTLS: false, Err: true},
+	{URL: "localhost:11300", Socket: "", UseTLS: false, Err: true},
+	{URL: "foobar", Socket: "", UseTLS: false, Err: true},
 }
 
 func TestParseURL(t *testing.T) {
