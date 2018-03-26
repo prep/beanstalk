@@ -8,7 +8,8 @@ type ConsumerPool struct {
 	C         <-chan *Job
 	c         chan *Job
 	consumers []*Consumer
-	sync.Mutex
+	stopOnce  sync.Once
+	mu        sync.Mutex
 }
 
 // NewConsumerPool creates a pool of beanstalk consumers.
@@ -36,20 +37,24 @@ func NewConsumerPool(urls []string, tubes []string, options *Options) (*Consumer
 
 // Stop shuts down all the consumers in the pool.
 func (pool *ConsumerPool) Stop() {
-	pool.Lock()
-	defer pool.Unlock()
+	pool.stopOnce.Do(func() {
+		pool.mu.Lock()
+		defer pool.mu.Unlock()
 
-	for i, consumer := range pool.consumers {
-		consumer.Stop()
-		pool.consumers[i] = nil
-	}
-	pool.consumers = []*Consumer{}
+		for i, consumer := range pool.consumers {
+			consumer.Stop()
+			pool.consumers[i] = nil
+		}
+
+		pool.consumers = []*Consumer{}
+		close(pool.c)
+	})
 }
 
 // Play tells all the consumers to start reservering jobs.
 func (pool *ConsumerPool) Play() {
-	pool.Lock()
-	defer pool.Unlock()
+	pool.mu.Lock()
+	defer pool.mu.Unlock()
 
 	for _, consumer := range pool.consumers {
 		consumer.Play()
@@ -58,8 +63,8 @@ func (pool *ConsumerPool) Play() {
 
 // Pause tells all the consumer to stop reservering jobs.
 func (pool *ConsumerPool) Pause() {
-	pool.Lock()
-	defer pool.Unlock()
+	pool.mu.Lock()
+	defer pool.mu.Unlock()
 
 	for _, consumer := range pool.consumers {
 		consumer.Pause()

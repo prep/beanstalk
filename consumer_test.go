@@ -173,17 +173,18 @@ func TestConsumerStop(t *testing.T) {
 	consumer := NewTestConsumer(t)
 	defer consumer.Close()
 
-	if consumer.isStopped != false {
+	select {
+	case <-consumer.stop:
 		t.Fatal("Expected consumer to not be stopped")
+	default:
 	}
-	if !consumer.Stop() {
-		t.Fatal("Expected a call to Stop() to succeed")
-	}
-	if consumer.isStopped != true {
+
+	consumer.Stop()
+
+	select {
+	case <-consumer.stop:
+	default:
 		t.Fatal("Expected consumer to be stopped")
-	}
-	if consumer.Stop() {
-		t.Fatal("Expected a call to Stop() to fail")
 	}
 }
 

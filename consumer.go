@@ -15,10 +15,10 @@ type Consumer struct {
 	pause     chan bool
 	stop      chan struct{}
 	isPaused  bool
-	isStopped bool
 	options   *Options
+	mu        sync.Mutex
 	startOnce sync.Once
-	sync.Mutex
+	stopOnce  sync.Once
 }
 
 // NewConsumer returns a new Consumer object.
@@ -49,30 +49,24 @@ func (consumer *Consumer) Start() {
 	})
 }
 
-// Stop this consumer. Returns true on success and false if this consumer was
-// already stopped.
-func (consumer *Consumer) Stop() bool {
-	consumer.Lock()
-	defer consumer.Unlock()
-
-	if consumer.isStopped {
-		return false
-	}
-
-	consumer.isStopped = true
-	consumer.stop <- struct{}{}
-	return true
+// Stop this consumer.
+func (consumer *Consumer) Stop() {
+	consumer.stopOnce.Do(func() {
+		close(consumer.stop)
+	})
 }
 
 // Play allows this consumer to start reserving jobs. Returns true on success
 // and false if this consumer was stopped.
 func (consumer *Consumer) Play() bool {
-	consumer.Lock()
-	defer consumer.Unlock()
-
-	if consumer.isStopped {
+	select {
+	case <-consumer.stop:
 		return false
+	default:
 	}
+
+	consumer.mu.Lock()
+	defer consumer.mu.Unlock()
 
 	select {
 	case <-consumer.pause:
@@ -86,12 +80,14 @@ func (consumer *Consumer) Play() bool {
 // Pause stops this consumer from reserving jobs. Returns true on success and
 // false if this consumer was stopped.
 func (consumer *Consumer) Pause() bool {
-	consumer.Lock()
-	defer consumer.Unlock()
-
-	if consumer.isStopped {
+	select {
+	case <-consumer.stop:
 		return false
+	default:
 	}
+
+	consumer.mu.Lock()
+	defer consumer.mu.Unlock()
 
 	select {
 	case <-consumer.pause:
@@ -146,7 +142,7 @@ func (consumer *Consumer) connectionManager() {
 		// Abort this connection and stop this consumer all together when the
 		// stop signal was received.
 		case <-consumer.stop:
-			abortConnect <- struct{}{}
+			close(abortConnect)
 			return
 		}
 	}

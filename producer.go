@@ -10,7 +10,8 @@ type Producer struct {
 	isStopped bool
 	options   *Options
 	startOnce sync.Once
-	sync.Mutex
+	stopOnce  sync.Once
+	mu        sync.Mutex
 }
 
 // NewProducer returns a new Producer object.
@@ -38,19 +39,14 @@ func (producer *Producer) Start() {
 	})
 }
 
-// Stop this producer. Return true on success and false if this producer was
-// already stopped.
-func (producer *Producer) Stop() bool {
-	producer.Lock()
-	defer producer.Unlock()
-
-	if producer.isStopped {
-		return false
-	}
-
-	producer.stop <- struct{}{}
-	producer.isStopped = true
-	return true
+// Stop this producer.
+func (producer *Producer) Stop() {
+	producer.stopOnce.Do(func() {
+		producer.mu.Lock()
+		producer.isStopped = true
+		close(producer.stop)
+		producer.mu.Unlock()
+	})
 }
 
 // manager is responsible for accepting new put requests and inserting them
@@ -111,7 +107,7 @@ func (producer *Producer) manager() {
 			}
 
 			if abortConnect != nil {
-				abortConnect <- struct{}{}
+				close(abortConnect)
 			}
 
 			return

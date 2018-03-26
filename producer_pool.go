@@ -8,7 +8,7 @@ type ProducerPool struct {
 	producers []*Producer
 	putC      chan *Put
 	putTokens chan *Put
-	sync.Mutex
+	stopOnce  sync.Once
 }
 
 // NewProducerPool creates a pool of Producer objects.
@@ -35,14 +35,14 @@ func NewProducerPool(urls []string, options *Options) (*ProducerPool, error) {
 
 // Stop shuts down all the producers in the pool.
 func (pool *ProducerPool) Stop() {
-	pool.Lock()
-	defer pool.Unlock()
+	pool.stopOnce.Do(func() {
+		for i, producer := range pool.producers {
+			producer.Stop()
+			pool.producers[i] = nil
+		}
 
-	for i, producer := range pool.producers {
-		producer.Stop()
-		pool.producers[i] = nil
-	}
-	pool.producers = []*Producer{}
+		pool.producers = []*Producer{}
+	})
 }
 
 // Put inserts a new job into beanstalk.
