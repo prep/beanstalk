@@ -9,20 +9,20 @@ import (
 
 // TubeStat describes the statistics of a beanstalk tube.
 type TubeStat struct {
-	Name           string `yaml:"name"`
-	UrgentJobs     int    `yaml:"current-jobs-urgent"`
-	ReadyJobs      int    `yaml:"current-jobs-ready"`
-	ReservedJobs   int    `yaml:"current-jobs-reserved"`
-	DelayedJobs    int    `yaml:"current-jobs-delayed"`
-	BuriedJobs     int    `yaml:"current-jobs-buried"`
-	TotalJobs      int64  `yaml:"tota-jobs"`
-	Using          int    `yaml:"current-using"`
-	Watching       int    `yaml:"curent-watching"`
-	Waiting        int    `yaml:"current-waiting"`
-	DeleteCommands int64  `yaml:"cmd-delete"`
-	PauseCommands  int64  `yaml:"cmd-pause-tube"`
-	PausedFor      int64  `yaml:"pause"`
-	PauseLeft      int64  `yaml:"pause-time-left"`
+	Name           string `yaml:"name"                  json:"name"`
+	UrgentJobs     int    `yaml:"current-jobs-urgent"   json:"urgentJobs"`
+	ReadyJobs      int    `yaml:"current-jobs-ready"    json:"readyJobs"`
+	ReservedJobs   int    `yaml:"current-jobs-reserved" json:"reservedJobs"`
+	DelayedJobs    int    `yaml:"current-jobs-delayed"  json:"delayedJobs"`
+	BuriedJobs     int    `yaml:"current-jobs-buried"   json:"buriedJobs"`
+	TotalJobs      int64  `yaml:"tota-jobs"             json:"totalJobs"`
+	Using          int    `yaml:"current-using"         json:"using"`
+	Watching       int    `yaml:"curent-watching"       json:"watching"`
+	Waiting        int    `yaml:"current-waiting"       json:"waiting"`
+	DeleteCommands int64  `yaml:"cmd-delete"            json:"deleteCommands"`
+	PauseCommands  int64  `yaml:"cmd-pause-tube"        json:"pauseCommands"`
+	PausedFor      int64  `yaml:"pause"                 json:"pausedFor"`
+	PauseLeft      int64  `yaml:"pause-time-left"       json:"pauseLeft"`
 }
 
 type stats struct {
