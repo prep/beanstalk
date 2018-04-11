@@ -6,6 +6,10 @@ import (
 	"time"
 )
 
+var (
+	keepAliveInterval = 10 * time.Second
+)
+
 // Consumer reserves jobs from a beanstalk server and keeps those jobs alive
 // until an external consumer has either buried, deleted or released it.
 type Consumer struct {
@@ -168,6 +172,11 @@ func (consumer *Consumer) clientManager(client *Client) (err error) {
 	touchTimer := time.NewTimer(time.Second)
 	touchTimer.Stop()
 
+	// When this connection is paused, perform some keep alive operation to keep
+	// the connection active and detect if it's still up.
+	keepAlive := time.NewTimer(time.Second)
+	keepAlive.Stop()
+
 	// Whenever this function returns, clean up the pending job and close the
 	// client connection.
 	defer func() {
@@ -254,6 +263,16 @@ func (consumer *Consumer) clientManager(client *Client) (err error) {
 				}
 			}
 
+		// Keep the connection alive when the connection state is paused.
+		case <-keepAlive.C:
+			if _, _, err = client.requestResponse("list-tube-used"); err != nil {
+				return
+			}
+
+			if consumer.isPaused {
+				keepAlive.Reset(keepAliveInterval)
+			}
+
 		// Bury, delete or release a reserved job.
 		case req := <-jobCommandC:
 			if req.Command == Touch {
@@ -283,15 +302,21 @@ func (consumer *Consumer) clientManager(client *Client) (err error) {
 
 		// Pause or unpause this connection.
 		case consumer.isPaused = <-consumer.pause:
-			if consumer.isPaused && job != nil {
-				if err = client.Release(job, job.Priority, 0); err != nil {
-					consumer.options.LogError("Unable to release job %d: %s", job.ID, err)
-					if isFatalErr() {
-						return
+			if consumer.isPaused {
+				if job != nil {
+					if err = client.Release(job, job.Priority, 0); err != nil {
+						consumer.options.LogError("Unable to release job %d: %s", job.ID, err)
+						if isFatalErr() {
+							return
+						}
 					}
+
+					job, jobOffer = nil, nil
 				}
 
-				job, jobOffer = nil, nil
+				keepAlive.Reset(keepAliveInterval)
+			} else {
+				keepAlive.Stop()
 			}
 
 		// Stop this connection and close this consumer down.
