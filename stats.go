@@ -15,9 +15,9 @@ type TubeStat struct {
 	ReservedJobs   int    `yaml:"current-jobs-reserved" json:"reservedJobs"`
 	DelayedJobs    int    `yaml:"current-jobs-delayed"  json:"delayedJobs"`
 	BuriedJobs     int    `yaml:"current-jobs-buried"   json:"buriedJobs"`
-	TotalJobs      int64  `yaml:"total-jobs"             json:"totalJobs"`
+	TotalJobs      int64  `yaml:"total-jobs"            json:"totalJobs"`
 	Using          int    `yaml:"current-using"         json:"using"`
-	Watching       int    `yaml:"curent-watching"       json:"watching"`
+	Watching       int    `yaml:"current-watching"      json:"watching"`
 	Waiting        int    `yaml:"current-waiting"       json:"waiting"`
 	DeleteCommands int64  `yaml:"cmd-delete"            json:"deleteCommands"`
 	PauseCommands  int64  `yaml:"cmd-pause-tube"        json:"pauseCommands"`
