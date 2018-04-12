@@ -15,14 +15,12 @@ type TubeStat struct {
 	ReservedJobs   int    `yaml:"current-jobs-reserved" json:"reservedJobs"`
 	DelayedJobs    int    `yaml:"current-jobs-delayed"  json:"delayedJobs"`
 	BuriedJobs     int    `yaml:"current-jobs-buried"   json:"buriedJobs"`
-	TotalJobs      int64  `yaml:"tota-jobs"             json:"totalJobs"`
+	TotalJobs      int64  `yaml:"total-jobs"             json:"totalJobs"`
 	Using          int    `yaml:"current-using"         json:"using"`
 	Watching       int    `yaml:"curent-watching"       json:"watching"`
 	Waiting        int    `yaml:"current-waiting"       json:"waiting"`
 	DeleteCommands int64  `yaml:"cmd-delete"            json:"deleteCommands"`
 	PauseCommands  int64  `yaml:"cmd-pause-tube"        json:"pauseCommands"`
-	PausedFor      int64  `yaml:"pause"                 json:"pausedFor"`
-	PauseLeft      int64  `yaml:"pause-time-left"       json:"pauseLeft"`
 }
 
 type stats struct {
@@ -116,6 +114,13 @@ func TubeStats(urls []string, options *Options, tubePrefix string) ([]TubeStat, 
 					tubeStats[i].UrgentJobs += tubeStat.UrgentJobs
 					tubeStats[i].ReadyJobs += tubeStat.ReadyJobs
 					tubeStats[i].ReservedJobs += tubeStat.ReservedJobs
+					tubeStats[i].DelayedJobs += tubeStat.DelayedJobs
+					tubeStats[i].BuriedJobs += tubeStat.BuriedJobs
+					tubeStats[i].TotalJobs += tubeStat.TotalJobs
+					tubeStats[i].Using += tubeStat.Using
+					tubeStats[i].Watching += tubeStat.Watching
+					tubeStats[i].DeleteCommands += tubeStat.DeleteCommands
+					tubeStats[i].PauseCommands += tubeStat.PauseCommands
 					found = true
 				}
 			}
