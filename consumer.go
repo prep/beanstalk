@@ -160,6 +160,7 @@ func (consumer *Consumer) clientManager(client *Client) (err error) {
 		jobOffer     chan<- *Job
 		jobCommandC  = make(chan *JobCommand)
 		jobsOutThere int
+		keepAlive    *time.Timer
 	)
 
 	// This is used to pause the select-statement for a bit when the job queue
@@ -172,10 +173,15 @@ func (consumer *Consumer) clientManager(client *Client) (err error) {
 	touchTimer := time.NewTimer(time.Second)
 	touchTimer.Stop()
 
-	// When this connection is paused, perform some keep alive operation to keep
-	// the connection active and detect if it's still up.
-	keepAlive := time.NewTimer(time.Second)
-	keepAlive.Stop()
+	// If this consumer is paused, make sure to start the polling to keep the
+	// connection alive. This is necessary in case there is a proxy between the
+	// client and server that disconnects idle connections.
+	if consumer.isPaused {
+		keepAlive = time.NewTimer(keepAliveInterval)
+	} else {
+		keepAlive = time.NewTimer(time.Second)
+		keepAlive.Stop()
+	}
 
 	// Whenever this function returns, clean up the pending job and close the
 	// client connection.
