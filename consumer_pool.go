@@ -47,7 +47,6 @@ func (pool *ConsumerPool) Stop() {
 		}
 
 		pool.consumers = []*Consumer{}
-		close(pool.c)
 	})
 }
 
