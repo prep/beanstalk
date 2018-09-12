@@ -112,6 +112,7 @@ func (consumer *Consumer) handleIO(conn *Conn, config Config) (err error) {
 
 	// reserveTimeout is used to wait between reserve calls.
 	reserveTimeout := time.NewTimer(0)
+	reserveTimeout.Stop()
 
 	// releaseTimeout is used to release a reserved job back before it got claimed.
 	releaseTimeout := time.NewTimer(time.Second)
