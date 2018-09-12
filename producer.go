@@ -50,7 +50,7 @@ func (producer *Producer) setupConnection(conn *Conn, config Config) error {
 	return nil
 }
 
-// handleIO takes jobs offered up on C and
+// handleIO takes jobs offered up on C and inserts them into beanstalk.
 func (producer *Producer) handleIO(conn *Conn, config Config) error {
 	producer.connMu.Lock()
 	producer.conn = conn
@@ -59,7 +59,6 @@ func (producer *Producer) handleIO(conn *Conn, config Config) error {
 	// On return, close this connection.
 	defer func() {
 		producer.connMu.Lock()
-		producer.conn.Close()
 		producer.conn = nil
 		producer.connMu.Unlock()
 	}()

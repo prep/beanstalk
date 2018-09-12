@@ -3,7 +3,6 @@ package beanstalk
 import (
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 )
@@ -58,7 +57,7 @@ func (consumer *Consumer) Close() {
 func (consumer *Consumer) Play() {
 	select {
 	case <-consumer.close:
-	case consumer.pause <- true:
+	case consumer.pause <- false:
 	}
 }
 
@@ -66,15 +65,19 @@ func (consumer *Consumer) Play() {
 func (consumer *Consumer) Pause() {
 	select {
 	case <-consumer.close:
-	case consumer.pause <- false:
+	case consumer.pause <- true:
 	}
 }
 
 func (consumer *Consumer) setupConnection(conn *Conn, config Config) error {
+	// If no tubes were specified, stick to the default one.
+	if len(consumer.tubes) == 0 {
+		return nil
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	config.logInfo("Watching tubes: %s", strings.Join(consumer.tubes, ", "))
 	for _, tube := range consumer.tubes {
 		if err := conn.Watch(ctx, tube); err != nil {
 			return fmt.Errorf("error watching tube: %s: %s", tube, err)
@@ -93,8 +96,6 @@ func (consumer *Consumer) setupConnection(conn *Conn, config Config) error {
 // handleIO is responsible for reserving jobs on the connection and offering
 // them up to a listener on C.
 func (consumer *Consumer) handleIO(conn *Conn, config Config) (err error) {
-	defer conn.Close()
-
 	var job *Job
 	var jobC chan<- *Job
 

@@ -2,6 +2,7 @@ package beanstalk
 
 import (
 	"crypto/tls"
+	"io/ioutil"
 	"log"
 	"time"
 )
@@ -51,21 +52,16 @@ func (config Config) normalize() Config {
 		config.ReconnectTimeout = 10 * time.Second
 	}
 
+	if config.InfoLog == nil {
+		config.InfoLog = log.New(ioutil.Discard, "", 0)
+	}
+	if config.ErrorLog == nil {
+		config.ErrorLog = log.New(ioutil.Discard, "", 0)
+	}
+
 	if config.jobC == nil {
 		config.jobC = make(chan *Job)
 	}
 
 	return config
-}
-
-func (config Config) logError(format string, params ...interface{}) {
-	if config.ErrorLog != nil {
-		config.ErrorLog.Printf(format, params...)
-	}
-}
-
-func (config Config) logInfo(format string, params ...interface{}) {
-	if config.InfoLog != nil {
-		config.InfoLog.Printf(format, params...)
-	}
 }
