@@ -31,11 +31,12 @@ func NewProducer(URI string, config Config) (*Producer, error) {
 	}
 
 	producer := &Producer{
-		C:    config.jobC,
-		conn: conn,
+		C:     config.jobC,
+		conn:  conn,
+		close: make(chan struct{}),
 	}
 
-	producer.close = keepConnected(producer, conn, config)
+	keepConnected(producer, conn, config, producer.close)
 	return producer, nil
 }
 

@@ -10,9 +10,8 @@ type ioHandler interface {
 	handleIO(conn *Conn, config Config) error
 }
 
-func keepConnected(handler ioHandler, conn *Conn, config Config) chan struct{} {
+func keepConnected(handler ioHandler, conn *Conn, config Config, close chan struct{}) {
 	URI := conn.URI
-	close := make(chan struct{})
 
 	go func() {
 		var err error
@@ -70,8 +69,6 @@ func keepConnected(handler ioHandler, conn *Conn, config Config) chan struct{} {
 			}
 		}
 	}()
-
-	return close
 }
 
 func contains(a []string, s string) bool {

@@ -39,11 +39,12 @@ func NewConsumer(URI string, tubes []string, config Config) (*Consumer, error) {
 	consumer := &Consumer{
 		C:        config.jobC,
 		tubes:    tubes,
+		close:    make(chan struct{}),
 		pause:    make(chan bool, 1),
 		isPaused: true,
 	}
 
-	consumer.close = keepConnected(consumer, conn, config)
+	keepConnected(consumer, conn, config, consumer.close)
 	return consumer, nil
 }
 
@@ -178,6 +179,7 @@ func (consumer *Consumer) handleIO(conn *Conn, config Config) (err error) {
 			if err = releaseJob(); err != nil {
 				return err
 			}
+
 		// Pause or unpause this consumer.
 		case consumer.isPaused = <-consumer.pause:
 			if consumer.isPaused {
