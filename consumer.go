@@ -23,6 +23,7 @@ type Consumer struct {
 	// This is used to keep track of the paused state.
 	isPaused bool
 	pause    chan bool
+	mu       sync.Mutex
 }
 
 // NewConsumer connects to the beanstalk server that's referenced in URI and
@@ -55,17 +56,27 @@ func (consumer *Consumer) Close() {
 
 // Play unpauses this customer.
 func (consumer *Consumer) Play() {
+	consumer.mu.Lock()
+	defer consumer.mu.Unlock()
+
 	select {
-	case <-consumer.close:
 	case consumer.pause <- false:
+	case <-consumer.pause:
+		consumer.pause <- false
+	case <-consumer.close:
 	}
 }
 
 // Pause this consumer.
 func (consumer *Consumer) Pause() {
+	consumer.mu.Lock()
+	defer consumer.mu.Unlock()
+
 	select {
-	case <-consumer.close:
 	case consumer.pause <- true:
+	case <-consumer.pause:
+		consumer.pause <- true
+	case <-consumer.close:
 	}
 }
 
@@ -174,6 +185,8 @@ func (consumer *Consumer) handleIO(conn *Conn, config Config) (err error) {
 				}
 
 				releaseTimeout.Stop()
+			} else {
+				reserveTimeout.Reset(0)
 			}
 
 		// If the connection closed, return to trigger a reconnect.
