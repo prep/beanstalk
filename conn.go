@@ -23,6 +23,7 @@ var (
 	ErrDeadline     = errors.New("deadline soon")
 	ErrDisconnected = errors.New("connection is disconnected")
 	ErrNotFound     = errors.New("job not found")
+	ErrTimedOut     = errors.New("reserve timed out")
 	ErrNotIgnored   = errors.New("tube not ignored")
 	ErrUnexpected   = errors.New("unexpected response received")
 )
@@ -64,7 +65,7 @@ func Dial(URI string, config Config) (*Conn, error) {
 	}
 
 	// If no port has been specified, add the appropriate one.
-	if _, _, err = net.SplitHostPort(URL.Host); err.Error() == "missing port in address" {
+	if _, _, err = net.SplitHostPort(URL.Host); err != nil && err.Error() == "missing port in address" {
 		if URL.Scheme == "tls" {
 			URL.Host += ":11400"
 		} else {
@@ -130,10 +131,20 @@ func (conn *Conn) readResponse() {
 			return
 		}
 
-		parts := strings.SplitN(line, " ", 3)
-
 		var resp response
+
+		parts := strings.SplitN(line, " ", 3)
 		switch parts[0] {
+		case "INSERTED":
+			if len(parts) != 2 {
+				resp.Error = ErrUnexpected
+				break
+			}
+
+			if resp.ID, err = strconv.ParseUint(parts[1], 10, 64); err == nil {
+				resp.Error = err
+			}
+
 		case "OK":
 			if len(parts) != 2 {
 				resp.Error = ErrUnexpected
@@ -175,16 +186,18 @@ func (conn *Conn) readResponse() {
 			resp.ID = id
 			resp.Body = body[:size]
 
-		case "NOT_IGNORED":
-			resp.Error = ErrNotIgnored
-
-		case "DELETED", "RELEASED", "TIMED_OUT", "TOUCHED", "USING", "WATCHING":
+		case "DELETED", "RELEASED", "TOUCHED", "USING", "WATCHING":
 		case "BURIED":
 			resp.Error = ErrBuried
 		case "DEADLINE_SOON":
 			resp.Error = ErrDeadline
 		case "NOT_FOUND":
 			resp.Error = ErrNotFound
+		case "NOT_IGNORED":
+			resp.Error = ErrNotIgnored
+		case "TIMED_OUT":
+			resp.Error = ErrTimedOut
+
 		default:
 			resp.Error = ErrUnexpected
 		}
@@ -282,11 +295,14 @@ func (conn *Conn) ReserveWithTimeout(ctx context.Context, timeout time.Duration)
 	defer conn.mu.Unlock()
 
 	id, body, err := conn.command(ctx, "reserve-with-timeout %d", timeout/time.Second)
-	if err != nil {
-		if err == ErrDeadline {
-			return nil, nil
-		}
-
+	switch {
+	case err == ErrDeadline:
+		return nil, nil
+	case err == ErrNotFound:
+		return nil, nil
+	case err == ErrTimedOut:
+		return nil, nil
+	case err != nil:
 		return nil, err
 	}
 
