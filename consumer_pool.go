@@ -2,47 +2,44 @@ package beanstalk
 
 import "sync"
 
-// ConsumerPool maintains a pool of beanstalk consumers.
+// ConsumerPool manages a pool of consumers that share a single channel on
+// which jobs are offered.
 type ConsumerPool struct {
-	// C offers up newly reserved beanstalk jobs.
-	C         <-chan *Job
-	c         chan *Job
+	// C offers up reserved jobs.
+	C <-chan *Job
+
 	consumers []*Consumer
 	stopOnce  sync.Once
 	mu        sync.Mutex
 }
 
-// NewConsumerPool creates a pool of beanstalk consumers.
-func NewConsumerPool(urls []string, tubes []string, options *Options) (*ConsumerPool, error) {
-	jobC := make(chan *Job)
-	pool := &ConsumerPool{C: jobC, c: jobC}
+// NewConsumerPool creates a pool of Consumers from the list of URIs that has
+// been provided.
+func NewConsumerPool(URIs []string, tubes []string, config Config) (*ConsumerPool, error) {
+	config = config.normalize()
 
-	// Create a consumer for each URL.
-	for _, url := range urls {
-		consumer, err := NewConsumer(url, tubes, jobC, options)
+	pool := &ConsumerPool{C: config.jobC}
+	for _, URI := range URIs {
+		consumer, err := NewConsumer(URI, tubes, config)
 		if err != nil {
+			pool.Stop()
 			return nil, err
 		}
 
 		pool.consumers = append(pool.consumers, consumer)
 	}
 
-	// Start all the consumers.
-	for _, consumer := range pool.consumers {
-		consumer.Start()
-	}
-
 	return pool, nil
 }
 
-// Stop shuts down all the consumers in the pool.
+// Stop all the consumers in this pool.
 func (pool *ConsumerPool) Stop() {
 	pool.stopOnce.Do(func() {
 		pool.mu.Lock()
 		defer pool.mu.Unlock()
 
 		for i, consumer := range pool.consumers {
-			consumer.Stop()
+			consumer.Close()
 			pool.consumers[i] = nil
 		}
 
@@ -50,7 +47,7 @@ func (pool *ConsumerPool) Stop() {
 	})
 }
 
-// Play tells all the consumers to start reservering jobs.
+// Play unpauses all the consumers in this pool.
 func (pool *ConsumerPool) Play() {
 	pool.mu.Lock()
 	defer pool.mu.Unlock()
@@ -60,7 +57,7 @@ func (pool *ConsumerPool) Play() {
 	}
 }
 
-// Pause tells all the consumer to stop reservering jobs.
+// Pause all the consumers in this pool.
 func (pool *ConsumerPool) Pause() {
 	pool.mu.Lock()
 	defer pool.mu.Unlock()
