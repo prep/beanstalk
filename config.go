@@ -32,15 +32,6 @@ type Config struct {
 	jobC chan *Job
 }
 
-// DefaultConfig returns a default Config.
-func DefaultConfig() Config {
-	return Config{
-		ReserveTimeout:   5 * time.Second,
-		ReleaseTimeout:   3 * time.Second,
-		ReconnectTimeout: 10 * time.Second,
-	}
-}
-
 func (config Config) normalize() Config {
 	if config.ReserveTimeout <= 0 {
 		config.ReserveTimeout = 5 * time.Second
