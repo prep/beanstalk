@@ -1,7 +1,6 @@
 package beanstalk
 
 import (
-	"io"
 	"time"
 )
 
@@ -51,12 +50,10 @@ func keepConnected(handler ioHandler, conn *Conn, config Config, close chan stru
 			}
 
 			// Run the IO handler.
-			if err = handler.handleIO(conn, config); err != nil {
-				if err == io.EOF {
-					config.InfoLog.Printf("Disconnected from beanstalk server %s", conn)
-				} else {
-					config.ErrorLog.Printf("Disconnected from beanstalk server %s: %s", conn, err)
-				}
+			if err = handler.handleIO(conn, config); err != nil && err != ErrDisconnected {
+				config.ErrorLog.Printf("Disconnected from beanstalk server %s: %#v", conn, err)
+			} else {
+				config.InfoLog.Printf("Disconnected from beanstalk server %s", conn)
 			}
 
 			conn.Close()

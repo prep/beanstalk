@@ -14,6 +14,7 @@ type Consumer struct {
 	// C offers up reserved jobs.
 	C <-chan *Job
 
+	// The tubes this consumer should watch.
 	tubes []string
 
 	// This is used to close this consumer.
@@ -61,10 +62,10 @@ func (consumer *Consumer) Play() {
 	defer consumer.mu.Unlock()
 
 	select {
+	case <-consumer.close:
 	case consumer.pause <- false:
 	case <-consumer.pause:
 		consumer.pause <- false
-	case <-consumer.close:
 	}
 }
 
@@ -74,10 +75,10 @@ func (consumer *Consumer) Pause() {
 	defer consumer.mu.Unlock()
 
 	select {
+	case <-consumer.close:
 	case consumer.pause <- true:
 	case <-consumer.pause:
 		consumer.pause <- true
-	case <-consumer.close:
 	}
 }
 
@@ -113,7 +114,9 @@ func (consumer *Consumer) handleIO(conn *Conn, config Config) (err error) {
 
 	// reserveTimeout is used to wait between reserve calls.
 	reserveTimeout := time.NewTimer(0)
-	reserveTimeout.Stop()
+	if consumer.isPaused {
+		reserveTimeout.Stop()
+	}
 
 	// releaseTimeout is used to release a reserved job back before it got claimed.
 	releaseTimeout := time.NewTimer(time.Second)
@@ -191,10 +194,6 @@ func (consumer *Consumer) handleIO(conn *Conn, config Config) (err error) {
 			} else {
 				reserveTimeout.Reset(0)
 			}
-
-		// If the connection closed, return to trigger a reconnect.
-		case err = <-conn.Closed:
-			return err
 
 		// Exit when this consumer is closing down.
 		case <-consumer.close:

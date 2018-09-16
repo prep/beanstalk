@@ -59,6 +59,7 @@ func (pool *ProducerPool) Put(ctx context.Context, tube string, body []byte, par
 	select {
 	case <-ctx.Done():
 		return 0, ctx.Err()
+
 	case pool.C <- job:
 		if err := <-job.errC; err != nil {
 			return 0, err

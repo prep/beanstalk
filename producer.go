@@ -70,15 +70,11 @@ func (producer *Producer) handleIO(conn *Conn, config Config) error {
 		case job := <-config.jobC:
 			id, err := producer.Put(context.Background(), job.Stats.Tube, job.Body, job.Stats.PutParams)
 			job.ID = id
-
 			job.errC <- err
+
 			if err != nil {
 				return err
 			}
-
-		// If the connection closed, return to trigger a reconnect.
-		case err := <-conn.Closed:
-			return err
 
 		// Exit when this producer is closing down.
 		case <-producer.close:
@@ -92,9 +88,9 @@ func (producer *Producer) Put(ctx context.Context, tube string, body []byte, par
 	producer.connMu.RLock()
 	defer producer.connMu.RUnlock()
 
-	if producer.conn != nil {
-		return producer.conn.Put(ctx, tube, body, params)
+	if producer.conn == nil {
+		return 0, ErrDisconnected
 	}
 
-	return 0, ErrDisconnected
+	return producer.conn.Put(ctx, tube, body, params)
 }

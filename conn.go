@@ -21,28 +21,19 @@ import (
 var (
 	ErrBuried       = errors.New("job was buried")
 	ErrDeadline     = errors.New("deadline soon")
-	ErrDisconnected = errors.New("connection is disconnected")
+	ErrDisconnected = errors.New("client disconnected")
 	ErrNotFound     = errors.New("job not found")
 	ErrTimedOut     = errors.New("reserve timed out")
 	ErrNotIgnored   = errors.New("tube not ignored")
 	ErrUnexpected   = errors.New("unexpected response received")
 )
 
-type response struct {
-	ID    uint64
-	Body  []byte
-	Error error
-}
-
 // Conn describes a connection to a beanstalk server.
 type Conn struct {
 	URI      string
-	Closed   <-chan error
-	closed   chan error
+	config   Config
 	conn     net.Conn
 	text     *textproto.Conn
-	config   Config
-	respC    chan response
 	lastTube string
 	mu       sync.Mutex
 }
@@ -93,148 +84,116 @@ func Dial(URI string, config Config) (*Conn, error) {
 		}
 	}
 
-	closed := make(chan error, 1)
-	conn := &Conn{
+	return &Conn{
 		URI:    URL.String(),
-		Closed: closed,
-		closed: closed,
+		config: config.normalize(),
 		conn:   netConn,
 		text:   textproto.NewConn(netConn),
-		config: config.normalize(),
-		respC:  make(chan response),
-	}
-
-	go conn.readResponse()
-	return conn, nil
+	}, nil
 }
 
 // Close this connection.
-func (conn *Conn) Close() error {
-	return conn.text.Close()
+func (conn *Conn) Close() (err error) {
+	return conn.conn.Close()
 }
 
 func (conn *Conn) String() string {
 	return conn.URI + " (local=" + conn.conn.LocalAddr().String() + ")"
 }
 
-func (conn *Conn) readResponse() {
-	for {
-		line, err := conn.text.ReadLine()
-		if err != nil {
-			conn.respC <- response{Error: err}
-			close(conn.respC)
+func (conn *Conn) command(ctx context.Context, format string, params ...interface{}) (uint64, []byte, error) {
+	// Write a command and read the response.
+	id, body, err := func() (uint64, []byte, error) {
+		if deadline, ok := ctx.Deadline(); ok {
+			if err := conn.conn.SetDeadline(deadline); err != nil {
+				return 0, nil, err
+			}
 
-			conn.closed <- err
-			close(conn.closed)
-
-			conn.text.Close()
-			return
+			defer conn.conn.SetDeadline(time.Time{})
 		}
 
-		var resp response
+		if err := conn.text.PrintfLine(format, params...); err != nil {
+			return 0, nil, err
+		}
+
+		line, err := conn.text.ReadLine()
+		if err != nil {
+			return 0, nil, err
+		}
 
 		parts := strings.SplitN(line, " ", 3)
 		switch parts[0] {
 		case "INSERTED":
 			if len(parts) != 2 {
-				resp.Error = ErrUnexpected
-				break
-			}
-
-			if resp.ID, err = strconv.ParseUint(parts[1], 10, 64); err == nil {
-				resp.Error = err
-			}
-
-		case "OK":
-			if len(parts) != 2 {
-				resp.Error = ErrUnexpected
-				break
-			}
-
-			size, err := strconv.ParseInt(parts[1], 10, 32)
-			if err != nil {
-				resp.Error = err
-				break
-			}
-			body := make([]byte, size+2)
-			if _, err := io.ReadFull(conn.text.R, body); err != nil {
-				resp.Error = err
-			}
-
-		case "RESERVED":
-			if len(parts) != 3 {
-				resp.Error = ErrUnexpected
-				break
+				return 0, nil, ErrUnexpected
 			}
 
 			id, err := strconv.ParseUint(parts[1], 10, 64)
 			if err != nil {
-				resp.Error = err
-				break
+				return 0, nil, ErrUnexpected
 			}
-			size, err := strconv.ParseInt(parts[2], 10, 32)
+
+			return id, nil, err
+
+		case "OK":
+			if len(parts) != 2 {
+				return 0, nil, ErrUnexpected
+			}
+
+			size, err := strconv.ParseInt(parts[1], 10, 32)
 			if err != nil {
-				resp.Error = err
-				break
+				return 0, nil, err
 			}
 			body := make([]byte, size+2)
 			if _, err := io.ReadFull(conn.text.R, body); err != nil {
-				resp.Error = err
-				break
+				return 0, nil, err
 			}
 
-			resp.ID = id
-			resp.Body = body[:size]
+			return 0, body, nil
+
+		case "RESERVED":
+			if len(parts) != 3 {
+				return 0, nil, ErrUnexpected
+			}
+
+			id, err := strconv.ParseUint(parts[1], 10, 64)
+			if err != nil {
+				return 0, nil, err
+			}
+			size, err := strconv.ParseInt(parts[2], 10, 32)
+			if err != nil {
+				return 0, nil, err
+			}
+			body := make([]byte, size+2)
+			if _, err := io.ReadFull(conn.text.R, body); err != nil {
+				return 0, nil, err
+			}
+
+			return id, body[:size], nil
 
 		case "DELETED", "RELEASED", "TOUCHED", "USING", "WATCHING":
+			return 0, nil, nil
 		case "BURIED":
-			resp.Error = ErrBuried
+			return 0, nil, ErrBuried
 		case "DEADLINE_SOON":
-			resp.Error = ErrDeadline
+			return 0, nil, ErrDeadline
 		case "NOT_FOUND":
-			resp.Error = ErrNotFound
+			return 0, nil, ErrNotFound
 		case "NOT_IGNORED":
-			resp.Error = ErrNotIgnored
+			return 0, nil, ErrNotIgnored
 		case "TIMED_OUT":
-			resp.Error = ErrTimedOut
-
-		default:
-			resp.Error = ErrUnexpected
+			return 0, nil, ErrTimedOut
 		}
 
-		conn.respC <- resp
-	}
-}
+		return 0, nil, ErrUnexpected
+	}()
 
-func (conn *Conn) command(ctx context.Context, format string, params ...interface{}) (uint64, []byte, error) {
-	select {
-	case <-conn.closed:
-		return 0, nil, ErrDisconnected
-	default:
-	}
-
-	if deadline, ok := ctx.Deadline(); ok {
-		if err := conn.conn.SetDeadline(deadline); err != nil {
-			return 0, nil, err
-		}
-
-		defer conn.conn.SetDeadline(time.Time{})
-	}
-
-	err := conn.text.PrintfLine(format, params...)
-	if err != nil {
-		return 0, nil, err
-	}
-
-	resp, ok := <-conn.respC
-	if !ok {
+	// An io.EOF means the connection got disconnected.
+	if err == io.EOF {
 		return 0, nil, ErrDisconnected
 	}
-	if resp.Error != nil {
-		return 0, nil, resp.Error
-	}
 
-	return resp.ID, resp.Body, nil
+	return id, body, err
 }
 
 func (conn *Conn) lcommand(ctx context.Context, format string, params ...interface{}) (uint64, []byte, error) {
