@@ -22,17 +22,17 @@ type Job struct {
 	Body       []byte
 	ReservedAt time.Time
 	Stats      struct {
-		PutParams
-		Tube     string        `yaml:"tube"`
-		State    string        `yaml:"state"`
-		Age      time.Duration `yaml:"age"`
-		TimeLeft time.Duration `yaml:"time-left"`
-		File     int           `yaml:"file"`
-		Reserves int           `yaml:"reserves"`
-		Timeouts int           `yaml:"timeouts"`
-		Releases int           `yaml:"releases"`
-		Buries   int           `yaml:"buries"`
-		Kicks    int           `yaml:"kicks"`
+		PutParams `yaml:",inline"`
+		Tube      string        `yaml:"tube"`
+		State     string        `yaml:"state"`
+		Age       time.Duration `yaml:"age"`
+		TimeLeft  time.Duration `yaml:"time-left"`
+		File      int           `yaml:"file"`
+		Reserves  int           `yaml:"reserves"`
+		Timeouts  int           `yaml:"timeouts"`
+		Releases  int           `yaml:"releases"`
+		Buries    int           `yaml:"buries"`
+		Kicks     int           `yaml:"kicks"`
 	}
 
 	conn *Conn
@@ -94,16 +94,5 @@ func (job *Job) Touch(ctx context.Context) error {
 // TouchAfter returns the duration until this jobs needs to be touched for its
 // reservation to be retained.
 func (job *Job) TouchAfter() time.Duration {
-	expiresAfter := time.Until(job.ReservedAt.Add(job.Stats.TimeLeft))
-
-	switch {
-	case expiresAfter < 500*time.Millisecond:
-		return 0
-	case expiresAfter < 3*time.Second:
-		return expiresAfter - 500*time.Millisecond
-	case expiresAfter < 60*time.Second:
-		return expiresAfter - time.Second
-	default:
-		return expiresAfter - 3*time.Second
-	}
+	return time.Until(job.ReservedAt.Add(job.Stats.TimeLeft))
 }
