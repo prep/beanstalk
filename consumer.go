@@ -97,7 +97,7 @@ func (consumer *Consumer) setupConnection(conn *Conn, config Config) error {
 		}
 	}
 
-	if !contains(consumer.tubes, "default") {
+	if !includes(consumer.tubes, "default") {
 		if err := conn.Ignore(ctx, "default"); err != nil {
 			return fmt.Errorf("error ignoring default tube: %s", err)
 		}
