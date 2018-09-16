@@ -229,6 +229,7 @@ func (conn *Conn) Put(ctx context.Context, tube string, body []byte, params PutP
 	conn.mu.Lock()
 	defer conn.mu.Unlock()
 
+	// If the tube is different than the last time, switch tubes.
 	if tube != conn.lastTube {
 		if _, _, err := conn.command(ctx, "use %s", tube); err != nil {
 			return 0, err
@@ -301,6 +302,10 @@ func (conn *Conn) touch(ctx context.Context, job *Job) error {
 	}
 
 	job.ReservedAt = time.Now()
+
+	// TimeLeft is always 1 second less than the TTR.
+	job.Stats.TimeLeft = job.Stats.TTR - time.Second
+
 	return nil
 }
 
