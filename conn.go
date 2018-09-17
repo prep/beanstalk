@@ -254,6 +254,7 @@ func (conn *Conn) ReserveWithTimeout(ctx context.Context, timeout time.Duration)
 	conn.mu.Lock()
 	defer conn.mu.Unlock()
 
+	reservedAt := time.Now()
 	id, body, err := conn.command(ctx, "reserve-with-timeout %d", timeout/time.Second)
 	switch {
 	case err == ErrDeadline:
@@ -266,7 +267,7 @@ func (conn *Conn) ReserveWithTimeout(ctx context.Context, timeout time.Duration)
 		return nil, err
 	}
 
-	job := &Job{ID: id, Body: body, ReservedAt: time.Now(), conn: conn}
+	job := &Job{ID: id, Body: body, ReservedAt: reservedAt, conn: conn}
 
 	// If this command errors out, it's either a NOT_FOUND response or an error
 	// on the connection. If it's the former, the TTR was probably very short and
@@ -297,14 +298,14 @@ func (conn *Conn) ReserveWithTimeout(ctx context.Context, timeout time.Duration)
 
 // touch the job thereby resetting its reserved status.
 func (conn *Conn) touch(ctx context.Context, job *Job) error {
+	touchedAt := time.Now()
 	if _, _, err := conn.lcommand(ctx, "touch %d", job.ID); err != nil {
 		return err
 	}
 
-	job.ReservedAt = time.Now()
-
 	// TimeLeft is always 1 second less than the TTR.
 	job.Stats.TimeLeft = job.Stats.TTR - time.Second
+	job.ReservedAt = touchedAt
 
 	return nil
 }
