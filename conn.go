@@ -93,7 +93,7 @@ func Dial(URI string, config Config) (*Conn, error) {
 }
 
 // Close this connection.
-func (conn *Conn) Close() (err error) {
+func (conn *Conn) Close() error {
 	return conn.conn.Close()
 }
 
