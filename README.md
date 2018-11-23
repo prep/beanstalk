@@ -29,7 +29,7 @@ if err != nil {
 defer pool.Stop()
 
 // Reusable put parameters.
-putParams := &beanstalk.PutParams{1024, 0, 5}
+putParams := &beanstalk.PutParams{1024, 0, 5 * time.Second}
 
 // Insert a job containing "Hello World" in the beanstalk tube named "test".
 id, err := pool.Put("test", []byte("Hello World"), putParams)
