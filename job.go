@@ -35,10 +35,21 @@ type JobCommand struct {
 
 // Job contains the data of a reserved job.
 type Job struct {
-	ID        uint64
-	Body      []byte
-	Priority  uint32
-	TTR       time.Duration
+	ID    uint64
+	Body  []byte
+	Stats struct {
+		PutParams `yaml:",inline"`
+		Tube      string        `yaml:"tube"`
+		State     string        `yaml:"state"`
+		Age       time.Duration `yaml:"age"`
+		TimeLeft  time.Duration `yaml:"time-left"`
+		File      int           `yaml:"file"`
+		Reserves  int           `yaml:"reserves"`
+		Timeouts  int           `yaml:"timeouts"`
+		Releases  int           `yaml:"releases"`
+		Buries    int           `yaml:"buries"`
+		Kicks     int           `yaml:"kicks"`
+	}
 	touchedAt time.Time
 	commandC  chan<- *JobCommand
 	sync.Mutex
@@ -74,7 +85,7 @@ func (job *Job) cmd(command Command, priority uint32, delay time.Duration) (err 
 // Bury tells the consumer to bury this job with the same priority as this job
 // was inserted with.
 func (job *Job) Bury() error {
-	return job.cmd(Bury, job.Priority, 0)
+	return job.cmd(Bury, job.Stats.Priority, 0)
 }
 
 // BuryWithPriority tells the consumer to bury this job with the specified
@@ -91,7 +102,7 @@ func (job *Job) Delete() error {
 // Release tells the consumer to release this job with the same priority as
 // this job was inserted with and without delay.
 func (job *Job) Release() error {
-	return job.cmd(Release, job.Priority, 0)
+	return job.cmd(Release, job.Stats.Priority, 0)
 }
 
 // ReleaseWithParams tells the consumer to release this job with the specified
@@ -118,9 +129,9 @@ func (job *Job) TouchAt() time.Duration {
 	var margin time.Duration
 
 	switch {
-	case job.TTR <= 3*time.Second:
+	case job.Stats.TTR <= 3*time.Second:
 		margin = 200 * time.Millisecond
-	case job.TTR < 60*time.Second:
+	case job.Stats.TTR < 60*time.Second:
 		margin = time.Second
 	default:
 		margin = 3 * time.Second
@@ -129,5 +140,5 @@ func (job *Job) TouchAt() time.Duration {
 	job.Lock()
 	defer job.Unlock()
 
-	return job.touchedAt.Add(job.TTR - margin).Sub(time.Now().UTC())
+	return job.touchedAt.Add(job.Stats.TTR - margin).Sub(time.Now().UTC())
 }

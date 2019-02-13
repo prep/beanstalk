@@ -15,12 +15,13 @@ func NewTestJob() *Job {
 		}
 	}()
 
-	return &Job{
+	job := &Job{
 		ID:       12345,
 		Body:     []byte("Hello World"),
-		TTR:      time.Duration(1),
 		commandC: commandC,
 	}
+	job.Stats.TTR = time.Duration(1)
+	return job
 }
 
 func TestBuryJob(t *testing.T) {

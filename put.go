@@ -67,9 +67,9 @@ type PutRequest struct {
 
 // PutParams describe the parameters for a put request.
 type PutParams struct {
-	Priority uint32
-	Delay    time.Duration
-	TTR      time.Duration
+	Priority uint32        `yaml:"pri"`
+	Delay    time.Duration `yaml:"delay"`
+	TTR      time.Duration `yaml:"ttr"`
 }
 
 // PutResponse defines the response to a Put request.

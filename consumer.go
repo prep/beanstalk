@@ -187,7 +187,7 @@ func (consumer *Consumer) clientManager(client *Client) (err error) {
 	// client connection.
 	defer func() {
 		if job != nil {
-			if e := client.Release(job, job.Priority, 0); e != nil {
+			if e := client.Release(job, job.Stats.Priority, 0); e != nil {
 				consumer.options.LogError("Unable to finish job %d: %s", job.ID, err)
 			}
 		}
@@ -310,7 +310,7 @@ func (consumer *Consumer) clientManager(client *Client) (err error) {
 		case consumer.isPaused = <-consumer.pause:
 			if consumer.isPaused {
 				if job != nil {
-					if err = client.Release(job, job.Priority, 0); err != nil {
+					if err = client.Release(job, job.Stats.Priority, 0); err != nil {
 						consumer.options.LogError("Unable to release job %d: %s", job.ID, err)
 						if isFatalErr() {
 							return

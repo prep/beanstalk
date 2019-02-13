@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"gopkg.in/yaml.v2"
 )
 
 // Errors that can be returned by the beanstalk client functions.
@@ -116,8 +118,9 @@ func (client *Client) Reserve(timeout time.Duration) (*Job, error) {
 		defer client.conn.SetReadDeadline(time.Time{})
 	}
 
-	job := &Job{TTR: time.Second}
+	job := &Job{}
 	job.ID, job.Body, err = client.response()
+	job.Stats.TTR = time.Second
 	if err != nil {
 		return nil, err
 	}
@@ -125,22 +128,30 @@ func (client *Client) Reserve(timeout time.Duration) (*Job, error) {
 		return nil, nil
 	}
 
-	// Fetch the TTR value for this job via stats-job. If this fails, ignore it.
-	if _, yaml, err := client.requestResponse("stats-job %d", job.ID); err == nil {
-		if val, err := yamlValue(yaml, "pri"); err == nil {
-			if prio, err := strconv.ParseUint(val, 10, 32); err == nil {
-				job.Priority = uint32(prio)
-			}
+	// Fetch the stat value for this job via stats-job.
+	_, jobStats, err := client.requestResponse("stats-job %d", job.ID)
+
+	if err == nil {
+		if err := yaml.Unmarshal(jobStats, &job.Stats); err != nil {
+			return job, err
 		}
 
-		if val, err := yamlValue(yaml, "ttr"); err == nil {
-			if ttr, err := strconv.Atoi(val); err == nil {
-				job.TTR = time.Duration(ttr) * time.Second
-			}
+		job.Stats.Age *= time.Second
+		job.Stats.Delay *= time.Second
+		job.Stats.TTR *= time.Second
+		job.Stats.TimeLeft *= time.Second
+
+	} else {
+		// Ignore all errors except ErrNotFound
+		if err == ErrNotFound {
+			return nil, nil
+		} else {
+			client.options.LogError("Error occurred during stats-job call for job: %d", job.ID)
 		}
 	}
 
 	job.touched()
+
 	return job, nil
 }
 
