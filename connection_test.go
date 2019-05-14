@@ -17,8 +17,8 @@ var urls = []urlTest{
 	{URL: "beanstalks://test.com:10301", Socket: "test.com:10301", UseTLS: true, Err: false},
 	{URL: "tls://test:1234", Socket: "test:1234", UseTLS: true, Err: false},
 	{URL: "http://localhost:11300", Socket: "", UseTLS: false, Err: true},
-	{URL: "localhost:11300", Socket: "", UseTLS: false, Err: true},
-	{URL: "foobar", Socket: "", UseTLS: false, Err: true},
+	{URL: "localhost:11300", Socket: "localhost:11300", UseTLS: false, Err: false},
+	{URL: "foobar", Socket: "foobar:11300", UseTLS: false, Err: false},
 }
 
 func TestParseURL(t *testing.T) {

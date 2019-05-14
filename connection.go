@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -72,28 +73,35 @@ func dial(uri string) (net.Conn, error) {
 
 // ParseURL takes a beanstalk URL and returns its hostname:port combination
 // and if it's a TLS socket or not.
-// Allowable schemes are beanstalk://, beanstalks:// and tls://.
+// Allowable schemes are beanstalk://, beanstalks:// and tls://, or a simple
+// hostname or hostname:port format for backwards compatibility.
 func ParseURL(u string) (socket string, useTLS bool, err error) {
-	URL, err := url.Parse(u)
-	if err != nil {
-		return "", false, err
+	if strings.Contains(u, "://") {
+		URL, err := url.Parse(u)
+		if err != nil {
+			return "", false, err
+		}
+
+		switch URL.Scheme {
+		case "beanstalk":
+		case "beanstalks", "tls":
+			useTLS = true
+		default:
+			return "", false, fmt.Errorf("%s: unknown scheme for beanstalk URL", URL.Scheme)
+		}
+
+		socket = URL.Host
+	} else {
+		socket = u
 	}
 
-	socket = URL.Host
 	if _, _, err := net.SplitHostPort(socket); err != nil {
 		if addrErr, ok := err.(*net.AddrError); ok && addrErr.Err == "missing port in address" {
-			socket = net.JoinHostPort(URL.Host, "11300")
+			socket = net.JoinHostPort(socket, "11300")
 		} else {
 			return "", false, err
 		}
 	}
 
-	switch URL.Scheme {
-	case "beanstalk":
-		return socket, false, nil
-	case "beanstalks", "tls":
-		return socket, true, nil
-	}
-
-	return "", false, fmt.Errorf("%s: unknown scheme for beanstalk URL", URL.Scheme)
+	return
 }
