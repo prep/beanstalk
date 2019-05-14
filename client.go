@@ -12,17 +12,17 @@ import (
 
 // Errors that can be returned by the beanstalk client functions.
 var (
-	ErrBuried           = errors.New("Job is buried")
-	ErrConnectionClosed = errors.New("Remote end closed connection")
-	ErrDeadlineSoon     = errors.New("Deadline soon")
-	ErrDraining         = errors.New("Server in draining mode")
-	ErrExpectedCRLF     = errors.New("Expected CRLF after job body")
-	ErrJobTooBig        = errors.New("Job body too big")
-	ErrNotConnected     = errors.New("Not connected")
-	ErrNotFound         = errors.New("Job not found")
-	ErrNotIgnored       = errors.New("Tube cannot be ignored")
-	ErrOutOfMemory      = errors.New("Server is out of memory")
-	ErrUnexpectedResp   = errors.New("Unexpected response from server")
+	ErrBuried           = errors.New("job is buried")
+	ErrConnectionClosed = errors.New("remote end closed connection")
+	ErrDeadlineSoon     = errors.New("deadline soon")
+	ErrDraining         = errors.New("server in draining mode")
+	ErrExpectedCRLF     = errors.New("expected CRLF after job body")
+	ErrJobTooBig        = errors.New("job body too big")
+	ErrNotConnected     = errors.New("not connected")
+	ErrNotFound         = errors.New("job not found")
+	ErrNotIgnored       = errors.New("tube cannot be ignored")
+	ErrOutOfMemory      = errors.New("server is out of memory")
+	ErrUnexpectedResp   = errors.New("unexpected response from server")
 )
 
 // Client implements a simple beanstalk API.
