@@ -34,7 +34,7 @@ func NewPut(putC chan<- *Put, options *Options) *Put {
 // Request sends a put request to an available Producer. This function uses the
 // ReadWriteTimeout field from Options{} to limit the time to wait for an
 // available producer before it returns ErrNotConnected.
-func (put *Put) Request(tube string, body []byte, params *PutParams) (ID uint64, err error) {
+func (put *Put) Request(tube string, body []byte, params *PutParams) (uint64, error) {
 	put.request.Tube, put.request.Body, put.request.Params = tube, body, params
 	if put.options.ReadWriteTimeout != 0 {
 		put.timer.Reset(put.options.ReadWriteTimeout)
@@ -53,8 +53,8 @@ func (put *Put) Request(tube string, body []byte, params *PutParams) (ID uint64,
 }
 
 // Response sends a put response back. This function is called from a producer.
-func (put *Put) Response(ID uint64, err error) {
-	put.response.ID, put.response.Err = ID, err
+func (put *Put) Response(id uint64, err error) {
+	put.response.ID, put.response.Err = id, err
 	put.respC <- struct{}{}
 }
 

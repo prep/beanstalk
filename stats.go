@@ -45,7 +45,7 @@ func TubeStats(urls []string, options *Options, tubePrefix string) ([]TubeStat, 
 
 			err := func() error {
 				// Dial into the beanstalk server.
-				conn, err := dial(url, options)
+				conn, err := dial(url)
 				if err != nil {
 					return err
 				}

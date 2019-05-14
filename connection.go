@@ -8,26 +8,26 @@ import (
 	"time"
 )
 
-// connect tries to create a new connection to the specified URL. It returns
+// connect tries to create a new connection to the specified URI. It returns
 // a channel on which a successful connect is advertised, as well as a channel
 // to abort a connection attempt in progress.
-func connect(URL string, options *Options) (<-chan net.Conn, chan<- struct{}) {
+func connect(uri string, options *Options) (<-chan net.Conn, chan<- struct{}) {
 	newConnection, abortConnect := make(chan net.Conn), make(chan struct{}, 1)
 
-	go func(URL string, options *Options) {
+	go func(uri string, options *Options) {
 		var offerC chan net.Conn
 		var retry = time.NewTimer(time.Second)
 		retry.Stop()
 
 		// Try to establish a connection to the remote beanstalk server.
 		for {
-			conn, err := dial(URL, options)
+			conn, err := dial(uri)
 			if err != nil {
 				retry.Reset(options.ReconnectTimeout)
-				options.LogError("Beanstalk connection failed to %s: %s", URL, err)
+				options.LogError("Beanstalk connection failed to %s: %s", uri, err)
 			} else {
 				offerC = newConnection
-				options.LogInfo("Beanstalk connection successful to %s (%s)", URL, conn.LocalAddr().String())
+				options.LogInfo("Beanstalk connection successful to %s (%s)", uri, conn.LocalAddr().String())
 			}
 
 			select {
@@ -36,22 +36,22 @@ func connect(URL string, options *Options) (<-chan net.Conn, chan<- struct{}) {
 				return
 			case <-abortConnect:
 				if conn != nil {
-					conn.Close()
+					_ = conn.Close()
 				}
 
 				retry.Stop()
 				return
 			}
 		}
-	}(URL, options)
+	}(uri, options)
 
 	return newConnection, abortConnect
 }
 
 // dial tries to set up either a non-TLS or a TLS connection to the host:port
 // combo specified in socket.
-func dial(URL string, options *Options) (net.Conn, error) {
-	socket, useTLS, err := ParseURL(URL)
+func dial(uri string) (net.Conn, error) {
+	socket, useTLS, err := ParseURL(uri)
 	if err != nil {
 		return nil, err
 	}

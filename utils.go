@@ -5,7 +5,7 @@ import (
 	"errors"
 )
 
-var errEntryNotFound = errors.New("Yaml entry not found")
+var errEntryNotFound = errors.New("yaml entry not found")
 
 // includesString checks if string _s_ is included in the slice of strings _a_.
 func includesString(a []string, s string) bool {

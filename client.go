@@ -53,7 +53,7 @@ func (client *Client) Close() {
 	}
 
 	client.options.LogInfo("Closing connection to beanstalk server %s (local=%s)", client.conn.RemoteAddr().String(), client.conn.LocalAddr().String())
-	client.textConn.Close()
+	_ = client.textConn.Close()
 	client.textConn = nil
 	client.conn = nil
 }

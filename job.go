@@ -8,8 +8,8 @@ import (
 
 // The errors that can be returned by any of the Job functions.
 var (
-	ErrJobFinished    = errors.New("Job was already finished")
-	ErrLostConnection = errors.New("The connection was lost")
+	ErrJobFinished    = errors.New("job was already finished")
+	ErrLostConnection = errors.New("the connection was lost")
 )
 
 // Command describes a beanstalk command that finishes a reserved job.

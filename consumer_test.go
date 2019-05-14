@@ -58,7 +58,7 @@ func NewTestConsumer(t *testing.T) *TestConsumer {
 
 func (consumer *TestConsumer) Close() {
 	consumer.Stop()
-	consumer.listener.Close()
+	_ = consumer.listener.Close()
 }
 
 func (consumer *TestConsumer) acceptNewConnections() {
@@ -85,7 +85,7 @@ func (consumer *TestConsumer) handleConnection() {
 		consumer.requestC <- request
 
 		response := <-consumer.responseC
-		consumer.client.PrintfLine(response)
+		_ = consumer.client.PrintfLine(response)
 	}
 }
 

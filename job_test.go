@@ -53,7 +53,7 @@ func TestReleaseJob(t *testing.T) {
 
 func TestReleaseJobWithParams(t *testing.T) {
 	job := NewTestJob()
-	if err := job.ReleaseWithParams(1024, time.Duration(time.Second)); err != nil {
+	if err := job.ReleaseWithParams(1024, time.Second); err != nil {
 		t.Fatalf("Unexpected error from Release: %s", err)
 	}
 }
