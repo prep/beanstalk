@@ -1,6 +1,7 @@
 package beanstalk
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -293,6 +294,8 @@ func (consumer *Consumer) clientManager(client *Client) (err error) {
 					err = client.Delete(req.Job)
 				case Release:
 					err = client.Release(req.Job, req.Priority, req.Delay)
+				default:
+					err = fmt.Errorf("%d: unknown job command", req.Command)
 				}
 
 				jobsOutThere--
