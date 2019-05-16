@@ -189,7 +189,7 @@ func (consumer *Consumer) clientManager(client *Client) (err error) {
 	defer func() {
 		if job != nil {
 			if e := client.Release(job, job.Priority, 0); e != nil {
-				consumer.options.LogError("Unable to finish job %d: %s", job.ID, err)
+				consumer.options.LogError("Unable to release job %d: %s", job.ID, e)
 			}
 		}
 
