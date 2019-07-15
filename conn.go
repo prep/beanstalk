@@ -4,11 +4,9 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"net/textproto"
-	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -40,34 +38,15 @@ type Conn struct {
 
 // Dial into a beanstalk server.
 func Dial(URI string, config Config) (*Conn, error) {
-	URL, err := url.Parse(URI)
+	socket, isTLS, err := ParseURI(URI)
 	if err != nil {
 		return nil, err
 	}
 
-	// Determine the protocol scheme of the URI.
-	switch strings.ToLower(URL.Scheme) {
-	case "beanstalks", "tls":
-		URL.Scheme = "tls"
-	case "beanstalk":
-		URL.Scheme = "beanstalk"
-	default:
-		return nil, fmt.Errorf("%s: unknown beanstalk URI scheme", URL.Scheme)
-	}
-
-	// If no port has been specified, add the appropriate one.
-	if _, _, err = net.SplitHostPort(URL.Host); err != nil && err.Error() == "missing port in address" {
-		if URL.Scheme == "tls" {
-			URL.Host += ":11400"
-		} else {
-			URL.Host += ":11300"
-		}
-	}
-
 	// Dial into the beanstalk server.
 	var netConn net.Conn
-	if URL.Scheme == "tls" {
-		tlsConn, err := tls.Dial("tcp", URL.Host, config.TLSConfig)
+	if isTLS {
+		tlsConn, err := tls.Dial("tcp", socket, config.TLSConfig)
 		if err != nil {
 			return nil, err
 		}
@@ -79,13 +58,13 @@ func Dial(URI string, config Config) (*Conn, error) {
 		netConn = tlsConn
 	} else {
 		var err error
-		if netConn, err = net.Dial("tcp", URL.Host); err != nil {
+		if netConn, err = net.Dial("tcp", socket); err != nil {
 			return nil, err
 		}
 	}
 
 	return &Conn{
-		URI:    URL.String(),
+		URI:    URI,
 		config: config.normalize(),
 		conn:   netConn,
 		text:   textproto.NewConn(netConn),
@@ -198,10 +177,9 @@ func (conn *Conn) command(ctx context.Context, format string, params ...interfac
 
 func (conn *Conn) lcommand(ctx context.Context, format string, params ...interface{}) (uint64, []byte, error) {
 	conn.mu.Lock()
-	id, body, err := conn.command(ctx, format, params...)
-	conn.mu.Unlock()
+	defer conn.mu.Unlock()
 
-	return id, body, err
+	return conn.command(ctx, format, params...)
 }
 
 func (conn *Conn) bury(ctx context.Context, job *Job, priority uint32) error {
