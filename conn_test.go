@@ -1,6 +1,7 @@
 package beanstalk
 
 import (
+	"bytes"
 	"context"
 	"net"
 	"net/textproto"
@@ -15,12 +16,7 @@ type Line struct {
 	line   string
 }
 
-// Is the line equal to the specified string?
-func (line Line) Is(s string) bool {
-	return s == line.line
-}
-
-// At lineno, is the line present?
+// At validates if the specified string is present at a specific line number.
 func (line Line) At(lineno int, s string) bool {
 	return lineno == line.lineno && s == line.line
 }
@@ -44,6 +40,11 @@ func NewServer() *Server {
 	go server.accept()
 
 	return server
+}
+
+// Close the server socket.
+func (server *Server) Close() {
+	_ = server.listener.Close()
 }
 
 // accept incoming connections.
@@ -96,26 +97,118 @@ func (server *Server) HandleFunc(handler func(line Line) string) {
 	server.handler = handler
 }
 
+// Socket returns the host:port combo that this server is listening on.
+func (server *Server) Socket() string {
+	return server.listener.Addr().String()
+}
+
 func TestConn(t *testing.T) {
 	server := NewServer()
-	defer server.listener.Close()
+	defer server.Close()
+
+	var conn *Conn
+	var ctx = context.Background()
 
 	// Dial the beanstalk server and set up a client connection.
-	var conn *Conn
 	t.Run("Dial", func(t *testing.T) {
 		var err error
-		conn, err = Dial(server.listener.Addr().String(), Config{})
+		conn, err = Dial(server.Socket(), Config{})
 		if err != nil {
 			t.Fatalf("Unable to dial to beanstalk server: %s", err)
 		}
 	})
 	defer conn.Close()
 
+	// bury a job.
+	t.Run("bury", func(t *testing.T) {
+		server.HandleFunc(func(line Line) string {
+			switch {
+			case line.At(1, "bury 1 10"):
+				return "BURIED"
+			default:
+				t.Fatalf("Unexpected client request at line %d: %s", line.lineno, line.line)
+			}
+
+			return ""
+		})
+
+		err := conn.bury(ctx, &Job{ID: 1}, 10)
+		switch {
+		case err == ErrDisconnected:
+		case err != nil:
+			t.Fatalf("Error burying job: %s", err)
+		}
+
+		// NotFound tests what happens when the NOT_FOUND error is returned.
+		t.Run("NotFound", func(t *testing.T) {
+			server.HandleFunc(func(line Line) string {
+				switch {
+				case line.At(1, "bury 2 11"):
+					return "NOT_FOUND"
+				default:
+					t.Fatalf("Unexpected client request at line %d: %s", line.lineno, line.line)
+				}
+
+				return ""
+			})
+
+			err := conn.bury(ctx, &Job{ID: 2}, 11)
+			switch {
+			case err == ErrDisconnected:
+			case err == ErrNotFound:
+			case err != nil:
+				t.Fatalf("Error burying job: %s", err)
+			}
+		})
+	})
+
+	// delete a job.
+	t.Run("delete", func(t *testing.T) {
+		server.HandleFunc(func(line Line) string {
+			switch {
+			case line.At(1, "delete 3"):
+				return "DELETED"
+			default:
+				t.Fatalf("Unexpected client request at line %d: %s", line.lineno, line.line)
+			}
+
+			return ""
+		})
+
+		err := conn.delete(ctx, &Job{ID: 3})
+		switch {
+		case err == ErrDisconnected:
+		case err != nil:
+			t.Fatalf("Error deleting job: %s", err)
+		}
+
+		// NotFound tests what happens when the NOT_FOUND error is returned.
+		t.Run("NotFound", func(t *testing.T) {
+			server.HandleFunc(func(line Line) string {
+				switch {
+				case line.At(1, "delete 4"):
+					return "NOT_FOUND"
+				default:
+					t.Fatalf("Unexpected client request at line %d: %s", line.lineno, line.line)
+				}
+
+				return ""
+			})
+
+			err := conn.delete(ctx, &Job{ID: 4})
+			switch {
+			case err == ErrDisconnected:
+			case err == ErrNotFound:
+			case err != nil:
+				t.Fatalf("Error deleting job: %s", err)
+			}
+		})
+	})
+
 	// Ignore watching a tube.
-	var ctx = context.Background()
 	t.Run("Ignore", func(t *testing.T) {
 		server.HandleFunc(func(line Line) string {
-			if line.Is("ignore foo") {
+			if line.At(1, "ignore foo") {
 				return "WATCHING 1"
 			}
 
@@ -123,11 +216,18 @@ func TestConn(t *testing.T) {
 			return ""
 		})
 
-		// LastTube test what happens if the ignore command fails because it tried
+		err := conn.Ignore(ctx, "foo")
+		switch {
+		case err == ErrDisconnected:
+		case err != nil:
+			t.Fatalf("Error ignoring tube: %s", err)
+		}
+
+		// NotIgnored test what happens if the ignore command fails because it tried
 		// to ignore the only tube this connection was watching.
-		t.Run("LastTube", func(t *testing.T) {
+		t.Run("NotIgnored", func(t *testing.T) {
 			server.HandleFunc(func(line Line) string {
-				if line.Is("ignore bar") {
+				if line.At(1, "ignore bar") {
 					return "NOT_IGNORED"
 
 				}
@@ -140,7 +240,7 @@ func TestConn(t *testing.T) {
 			switch {
 			case err == ErrDisconnected:
 			case err != ErrNotIgnored:
-				t.Fatalf("Error ignoring tube: %s", err)
+				t.Fatalf("Expected the ErrNotIgnored error, but got %s", err)
 			}
 		})
 	})
@@ -153,7 +253,7 @@ func TestConn(t *testing.T) {
 				return "USING foobar"
 			case line.At(2, "put 1024 10 60 11"):
 			case line.At(3, "Hello World"):
-				return "INSERTED 12345"
+				return "INSERTED 5"
 			default:
 				t.Fatalf("Unexpected client request at line %d: %s", line.lineno, line.line)
 			}
@@ -166,8 +266,8 @@ func TestConn(t *testing.T) {
 		case err == ErrDisconnected:
 		case err != nil:
 			t.Fatalf("Error inserting a new job: %s", err)
-		case id != 12345:
-			t.Fatalf("Expected job ID 12345, but got %d", id)
+		case id != 5:
+			t.Fatalf("Expected job ID 5, but got %d", id)
 		}
 
 		// OnSameTube tests if the command order makes sense if another message is
@@ -177,7 +277,7 @@ func TestConn(t *testing.T) {
 				switch {
 				case line.At(1, "put 1024 10 60 11"):
 				case line.At(2, "Hello World"):
-					return "INSERTED 54321"
+					return "INSERTED 6"
 				default:
 					t.Fatalf("Unexpected client request at line %d: %s", line.lineno, line.line)
 				}
@@ -190,8 +290,8 @@ func TestConn(t *testing.T) {
 			case err == ErrDisconnected:
 			case err != nil:
 				t.Fatalf("Error inserting a new job: %s", err)
-			case id != 54321:
-				t.Fatalf("Expected job ID 54321, but got %d", id)
+			case id != 6:
+				t.Fatalf("Expected job ID 6, but got %d", id)
 			}
 		})
 
@@ -204,7 +304,7 @@ func TestConn(t *testing.T) {
 					return "USING zoink"
 				case line.At(2, "put 512 15 30 10"):
 				case line.At(3, "Hello Narf"):
-					return "INSERTED 12345"
+					return "INSERTED 7"
 				default:
 					t.Fatalf("Unexpected client request at line %d: %s", line.lineno, line.line)
 				}
@@ -217,8 +317,71 @@ func TestConn(t *testing.T) {
 			case err == ErrDisconnected:
 			case err != nil:
 				t.Fatalf("Error inserting a new job: %s", err)
-			case id != 12345:
-				t.Fatalf("Expected job ID 12345, but got %d", id)
+			case id != 7:
+				t.Fatalf("Expected job ID 7, but got %d", id)
+			}
+		})
+	})
+
+	// release tests the release method, responsible for releasing jobs back.
+	t.Run("release", func(t *testing.T) {
+		server.HandleFunc(func(line Line) string {
+			switch {
+			case line.At(1, "release 8 12 20"):
+				return "RELEASED"
+			default:
+				t.Fatalf("Unexpected client request at line %d: %s", line.lineno, line.line)
+			}
+
+			return ""
+		})
+
+		err := conn.release(ctx, &Job{ID: 8}, 12, 20*time.Second)
+		switch {
+		case err == ErrDisconnected:
+		case err != nil:
+			t.Fatalf("Error releasing job: %s", err)
+		}
+
+		// Buried tests what happens when the BURIED error is returned.
+		t.Run("Buried", func(t *testing.T) {
+			server.HandleFunc(func(line Line) string {
+				switch {
+				case line.At(1, "release 9 13 21"):
+					return "BURIED"
+				default:
+					t.Fatalf("Unexpected client request at line %d: %s", line.lineno, line.line)
+				}
+
+				return ""
+			})
+
+			err := conn.release(ctx, &Job{ID: 9}, 13, 21*time.Second)
+			switch {
+			case err == ErrDisconnected:
+			case err != ErrBuried:
+				t.Fatalf("Expected the ErrBuried error, but got %s", err)
+			}
+		})
+
+		// NotFound tests what happens when the NOT_FOUND error is returned.
+		t.Run("NotFound", func(t *testing.T) {
+			server.HandleFunc(func(line Line) string {
+				switch {
+				case line.At(1, "release 10 14 22"):
+					return "NOT_FOUND"
+				default:
+					t.Fatalf("Unexpected client request at line %d: %s", line.lineno, line.line)
+				}
+
+				return ""
+			})
+
+			err := conn.release(ctx, &Job{ID: 10}, 14, 22*time.Second)
+			switch {
+			case err == ErrDisconnected:
+			case err != ErrNotFound:
+				t.Fatalf("Expected the ErrNotFound error, but got %s", err)
 			}
 		})
 	})
@@ -227,7 +390,7 @@ func TestConn(t *testing.T) {
 	t.Run("ReserveWithTimeout", func(t *testing.T) {
 		server.HandleFunc(func(line Line) string {
 			switch {
-			case line.At(1, "reserve-with-timeout 3"):
+			case line.At(1, "reserve-with-timeout 1"):
 				return "RESERVED 12 11\r\nHello World"
 			case line.At(2, "stats-job 12"):
 				return "OK 166\r\n---\r\nid: 12\r\ntube: default\r\nstate: reserved\r\npri: 512\r\nage: 23\r\ndelay: 15\r\nttr: 30\r\ntime-left: 25\r\nfile: 6\r\nreserves: 1\r\ntimeouts: 4\r\nreleases: 5\r\nburies: 2\r\nkicks: 7"
@@ -239,13 +402,23 @@ func TestConn(t *testing.T) {
 			return ""
 		})
 
-		job, err := conn.ReserveWithTimeout(ctx, 3*time.Second)
+		job, err := conn.ReserveWithTimeout(ctx, 1*time.Second)
 		switch {
 		case err == ErrDisconnected:
 		case err != nil:
 			t.Fatalf("Error reserving a job: %s", err)
 		case job == nil:
 			t.Fatal("Expected job, but got nothing")
+
+		// Validate the basic attributes.
+		case job.ID != 12:
+			t.Fatalf("Expected job ID 12, but got %d", job.ID)
+		case !bytes.Equal(job.Body, []byte(`Hello World`)):
+			t.Fatalf("Expected job body to be \"Hello World\", but got %q", string(job.Body))
+		case job.ReservedAt.IsZero():
+			t.Fatal("Expected job ReservedAt to be set, but it was not")
+
+		// Validate the Stats.
 		case job.Stats.Tube != "default":
 			t.Fatalf("Expected job tube default, but got %s", job.Stats.Tube)
 		case job.Stats.State != "reserved":
@@ -266,6 +439,14 @@ func TestConn(t *testing.T) {
 			t.Fatalf("Expected job buries to be 2, but got %d", job.Stats.Buries)
 		case job.Stats.Kicks != 7:
 			t.Fatalf("Expected job kicks to be 7, but got %d", job.Stats.Kicks)
+
+		// Validate the PutParams.
+		case job.Stats.PutParams.Priority != 512:
+			t.Fatalf("Expected job priority to be 512, but got %d", job.Stats.PutParams.Priority)
+		case job.Stats.PutParams.Delay != 15*time.Second:
+			t.Fatalf("Expected job TTR to be 15s, but got %s", job.Stats.PutParams.Delay)
+		case job.Stats.PutParams.TTR != 30*time.Second:
+			t.Fatalf("Expected job TTR to be 30s, but got %s", job.Stats.PutParams.TTR)
 		}
 
 		// WithTimeout tests if a TIMED_OUT response is properly handled.
@@ -295,7 +476,7 @@ func TestConn(t *testing.T) {
 		t.Run("WithDeadline", func(t *testing.T) {
 			server.HandleFunc(func(line Line) string {
 				switch {
-				case line.At(1, "reserve-with-timeout 2"):
+				case line.At(1, "reserve-with-timeout 3"):
 					return "DEADLINE_SOON"
 				default:
 					t.Fatalf("Unexpected client request at line %d: %s", line.lineno, line.line)
@@ -304,7 +485,7 @@ func TestConn(t *testing.T) {
 				return ""
 			})
 
-			job, err := conn.ReserveWithTimeout(ctx, 2*time.Second)
+			job, err := conn.ReserveWithTimeout(ctx, 3*time.Second)
 			switch {
 			case err == ErrDisconnected:
 			case err != nil:
@@ -319,7 +500,7 @@ func TestConn(t *testing.T) {
 		t.Run("WithNotFound", func(t *testing.T) {
 			server.HandleFunc(func(line Line) string {
 				switch {
-				case line.At(1, "reserve-with-timeout 2"):
+				case line.At(1, "reserve-with-timeout 4"):
 					return "RESERVED 13 11\r\nHello World"
 				case line.At(2, "stats-job 13"):
 					return "NOT_FOUND"
@@ -331,13 +512,65 @@ func TestConn(t *testing.T) {
 				return ""
 			})
 
-			job, err := conn.ReserveWithTimeout(ctx, 2*time.Second)
+			job, err := conn.ReserveWithTimeout(ctx, 4*time.Second)
 			switch {
 			case err == ErrDisconnected:
 			case err != nil:
 				t.Fatalf("Error reserving a job: %s", err)
 			case job != nil:
 				t.Fatalf("Expected job to be nil, but got %#v", job)
+			}
+		})
+	})
+
+	// touch an existing job.
+	t.Run("touch", func(t *testing.T) {
+		server.HandleFunc(func(line Line) string {
+			switch {
+			case line.At(1, "touch 13"):
+				return "TOUCHED"
+			default:
+				t.Fatalf("Unexpected client request at line %d: %s", line.lineno, line.line)
+
+			}
+
+			return ""
+		})
+
+		job := &Job{ID: 13}
+		job.Stats.PutParams.TTR = 5 * time.Second
+
+		err := conn.touch(ctx, job)
+		switch {
+		case err == ErrDisconnected:
+		case err != nil:
+			t.Fatalf("Error watching a channel: %s", err)
+		case job.Stats.PutParams.TTR != 5*time.Second:
+			t.Fatalf("Expected job TTR to be 5s, but got %s", job.Stats.PutParams.TTR)
+		case job.Stats.TimeLeft != 4*time.Second:
+			t.Fatalf("Expected job time left to be 4s, but got %s", job.Stats.TimeLeft)
+		case job.ReservedAt.IsZero():
+			t.Fatal("Expected job ReservedAt to be set, but it was not")
+		}
+
+		t.Run("NotFound", func(t *testing.T) {
+			server.HandleFunc(func(line Line) string {
+				switch {
+				case line.At(1, "touch 14"):
+					return "NOT_FOUND"
+				default:
+					t.Fatalf("Unexpected client request at line %d: %s", line.lineno, line.line)
+
+				}
+
+				return ""
+			})
+
+			err := conn.touch(ctx, &Job{ID: 14})
+			switch {
+			case err == ErrDisconnected:
+			case err != ErrNotFound:
+				t.Fatalf("Expected the ErrNotFound error, but got %s", err)
 			}
 		})
 	})
@@ -366,16 +599,11 @@ func TestConn(t *testing.T) {
 		// ErrTubeTooLong tests if a client-side error is returned if the tube name
 		// is too long.
 		t.Run("ErrTubeTooLong", func(t *testing.T) {
-			name := make([]byte, 201)
-			for i := 0; i < len(name); i++ {
-				name[i] = 'a'
-			}
-
-			err := conn.Watch(ctx, string(name))
+			err := conn.Watch(ctx, string(make([]byte, 201)))
 			switch {
 			case err == ErrDisconnected:
 			case err != ErrTubeTooLong:
-				t.Fatalf("Expected error %s, but go %s", ErrTubeTooLong, err)
+				t.Fatalf("Expected the ErrTubeTooLong error, but got %s", err)
 			}
 		})
 	})
