@@ -7,16 +7,11 @@ import (
 
 // Producer manages a connection for the purpose of inserting jobs.
 type Producer struct {
-	// C provides a channel for inserting jobs on.
-	C chan<- *Job
-
-	// This producer's connection.
-	conn   *Conn
-	connMu sync.RWMutex
-
-	// This is used to close this producer.
+	conn      *Conn
+	errC      chan error
 	close     chan struct{}
 	closeOnce sync.Once
+	mu        sync.Mutex
 }
 
 // NewProducer creates a connection to a beanstalk server, but will return an
@@ -31,8 +26,8 @@ func NewProducer(URI string, config Config) (*Producer, error) {
 	}
 
 	producer := &Producer{
-		C:     config.jobC,
 		conn:  conn,
+		errC:  make(chan error, 1),
 		close: make(chan struct{}),
 	}
 
@@ -53,44 +48,42 @@ func (producer *Producer) setupConnection(conn *Conn, config Config) error {
 
 // handleIO takes jobs offered up on C and inserts them into beanstalk.
 func (producer *Producer) handleIO(conn *Conn, config Config) error {
-	producer.connMu.Lock()
+	producer.mu.Lock()
 	producer.conn = conn
-	producer.connMu.Unlock()
+	producer.mu.Unlock()
 
-	// On return, close this connection.
-	defer func() {
-		producer.connMu.Lock()
+	select {
+	// If an error occured in Put, return it.
+	case err := <-producer.errC:
+		return err
+
+	// Exit when this producer is closing down.
+	case <-producer.close:
+		producer.mu.Lock()
 		producer.conn = nil
-		producer.connMu.Unlock()
-	}()
+		producer.mu.Unlock()
 
-	for {
-		select {
-		// Insert the job.
-		case job := <-config.jobC:
-			id, err := producer.Put(context.Background(), job.Stats.Tube, job.Body, job.Stats.PutParams)
-			job.ID = id
-			job.errC <- err
-
-			if err != nil {
-				return err
-			}
-
-		// Exit when this producer is closing down.
-		case <-producer.close:
-			return nil
-		}
+		return nil
 	}
 }
 
 // Put inserts a job into beanstalk.
 func (producer *Producer) Put(ctx context.Context, tube string, body []byte, params PutParams) (uint64, error) {
-	producer.connMu.RLock()
-	defer producer.connMu.RUnlock()
+	producer.mu.Lock()
+	defer producer.mu.Unlock()
 
+	// If this producer isn't connected, return ErrDisconnected.
 	if producer.conn == nil {
 		return 0, ErrDisconnected
 	}
 
-	return producer.conn.Put(ctx, tube, body, params)
+	// Insert the job. If this fails, mark the connection as disconnected and
+	// report the error to handleIO.
+	id, err := producer.conn.Put(ctx, tube, body, params)
+	if err != nil {
+		producer.conn = nil
+		producer.errC <- err
+	}
+
+	return id, err
 }

@@ -36,7 +36,6 @@ type Job struct {
 	}
 
 	conn *Conn
-	errC chan error
 }
 
 // Bury this job.

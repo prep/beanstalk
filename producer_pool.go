@@ -2,17 +2,16 @@ package beanstalk
 
 import (
 	"context"
+	"math/rand"
 	"sync"
 )
 
 // ProducerPool manages a connection pool of Producers and provides a simple
 // interface for balancing Put requests over the pool of connections.
 type ProducerPool struct {
-	C chan<- *Job
-
 	producers []*Producer
 	stopOnce  sync.Once
-	mu        sync.Mutex
+	mu        sync.RWMutex
 }
 
 // NewProducerPool creates a pool of Producers from the list of URIs that has
@@ -20,7 +19,7 @@ type ProducerPool struct {
 func NewProducerPool(URIs []string, config Config) (*ProducerPool, error) {
 	config = config.normalize()
 
-	pool := &ProducerPool{C: config.jobC}
+	var pool ProducerPool
 	for _, URI := range URIs {
 		producer, err := NewProducer(URI, config)
 		if err != nil {
@@ -31,7 +30,7 @@ func NewProducerPool(URIs []string, config Config) (*ProducerPool, error) {
 		pool.producers = append(pool.producers, producer)
 	}
 
-	return pool, nil
+	return &pool, nil
 }
 
 // Stop all the producers in this pool.
@@ -51,20 +50,23 @@ func (pool *ProducerPool) Stop() {
 
 // Put a job into the specified tube.
 func (pool *ProducerPool) Put(ctx context.Context, tube string, body []byte, params PutParams) (uint64, error) {
-	job := &Job{Body: body}
-	job.Stats.Tube = tube
-	job.Stats.PutParams = params
-	job.errC = make(chan error)
+	pool.mu.RLock()
+	defer pool.mu.RUnlock()
 
-	select {
-	case <-ctx.Done():
-		return 0, ctx.Err()
-
-	case pool.C <- job:
-		if err := <-job.errC; err != nil {
+	// Cycle randomly over the producers.
+	for _, num := range rand.Perm(len(pool.producers)) {
+		id, err := pool.producers[num].Put(ctx, tube, body, params)
+		switch {
+		// If a producer is disconnected, try the next one.
+		case err == ErrDisconnected:
+			continue
+		case err != nil:
 			return 0, err
 		}
 
-		return job.ID, nil
+		return id, nil
 	}
+
+	// If no producer was found, all were disconnected.
+	return 0, ErrDisconnected
 }
