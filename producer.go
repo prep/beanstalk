@@ -17,10 +17,10 @@ type Producer struct {
 // NewProducer creates a connection to a beanstalk server, but will return an
 // error if the connection fails. Once established, the connection will be
 // maintained in the background.
-func NewProducer(URI string, config Config) (*Producer, error) {
+func NewProducer(uri string, config Config) (*Producer, error) {
 	config = config.normalize()
 
-	conn, err := Dial(URI, config)
+	conn, err := Dial(uri, config)
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +53,7 @@ func (producer *Producer) handleIO(conn *Conn, config Config) error {
 	producer.mu.Unlock()
 
 	select {
-	// If an error occured in Put, return it.
+	// If an error occurred in Put, return it.
 	case err := <-producer.errC:
 		return err
 

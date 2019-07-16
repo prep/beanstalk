@@ -38,8 +38,8 @@ type Conn struct {
 }
 
 // Dial into a beanstalk server.
-func Dial(URI string, config Config) (*Conn, error) {
-	socket, isTLS, err := ParseURI(URI)
+func Dial(uri string, config Config) (*Conn, error) {
+	socket, isTLS, err := ParseURI(uri)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +65,7 @@ func Dial(URI string, config Config) (*Conn, error) {
 	}
 
 	return &Conn{
-		URI:    URI,
+		URI:    uri,
 		config: config.normalize(),
 		conn:   netConn,
 		text:   textproto.NewConn(netConn),

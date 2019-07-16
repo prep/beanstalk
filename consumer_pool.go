@@ -15,12 +15,12 @@ type ConsumerPool struct {
 
 // NewConsumerPool creates a pool of Consumers from the list of URIs that has
 // been provided.
-func NewConsumerPool(URIs []string, tubes []string, config Config) (*ConsumerPool, error) {
+func NewConsumerPool(uris []string, tubes []string, config Config) (*ConsumerPool, error) {
 	config = config.normalize()
 
 	pool := &ConsumerPool{C: config.jobC}
-	for _, URI := range URIs {
-		consumer, err := NewConsumer(URI, tubes, config)
+	for _, uri := range uris {
+		consumer, err := NewConsumer(uri, tubes, config)
 		if err != nil {
 			pool.Stop()
 			return nil, err

@@ -19,28 +19,28 @@ import (
 // Where both the beanstalks and tls scheme mean the same thing. Alternatively,
 // it is also possibly to just specify the host:port combo which is assumed to
 // be a plaintext connection.
-func ParseURI(URI string) (string, bool, error) {
+func ParseURI(uri string) (string, bool, error) {
 	var host string
 	var isTLS bool
 
-	if strings.Contains(URI, "://") {
-		URL, err := url.Parse(URI)
+	if strings.Contains(uri, "://") {
+		url, err := url.Parse(uri)
 		if err != nil {
 			return "", false, err
 		}
 
 		// Determine the protocol scheme of the URI.
-		switch strings.ToLower(URL.Scheme) {
+		switch strings.ToLower(url.Scheme) {
 		case "beanstalk":
 		case "beanstalks", "tls":
 			isTLS = true
 		default:
-			return "", false, fmt.Errorf("%s: unknown beanstalk URI scheme", URL.Scheme)
+			return "", false, fmt.Errorf("%s: unknown beanstalk URI scheme", url.Scheme)
 		}
 
-		host = URL.Host
+		host = url.Host
 	} else {
-		host = URI
+		host = uri
 	}
 
 	// Validate the resulting host:port combo.
@@ -110,7 +110,7 @@ func keepConnected(handler ioHandler, conn *Conn, config Config, close chan stru
 			err := handler.setupConnection(conn, config)
 			if err != nil {
 				config.InfoLog.Printf("Unable to set up the beanstalk connection: %s", err)
-				conn.Close()
+				_ = conn.Close()
 				conn = nil
 
 				select {
@@ -129,7 +129,7 @@ func keepConnected(handler ioHandler, conn *Conn, config Config, close chan stru
 				config.InfoLog.Printf("Disconnected from beanstalk server %s", conn)
 			}
 
-			conn.Close()
+			_ = conn.Close()
 			conn = nil
 
 			select {

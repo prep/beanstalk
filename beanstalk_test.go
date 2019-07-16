@@ -11,9 +11,7 @@ func TestParseURI(t *testing.T) {
 			switch {
 			case err != nil:
 				t.Errorf("Unable to parse URI: %s", uri)
-			}
-
-			if host != "localhost:12345" {
+			case host != "localhost:12345":
 				t.Errorf("Unexpected host: %s", host)
 			}
 

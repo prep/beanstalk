@@ -16,11 +16,11 @@ type ProducerPool struct {
 
 // NewProducerPool creates a pool of Producers from the list of URIs that has
 // been provided.
-func NewProducerPool(URIs []string, config Config) (*ProducerPool, error) {
+func NewProducerPool(uris []string, config Config) (*ProducerPool, error) {
 	config = config.normalize()
 
 	var pool ProducerPool
-	for _, URI := range URIs {
+	for _, URI := range uris {
 		producer, err := NewProducer(URI, config)
 		if err != nil {
 			pool.Stop()

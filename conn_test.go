@@ -80,7 +80,7 @@ func (server *Server) handleConn(conn *textproto.Conn) {
 			server.lineno++
 			if server.handler != nil {
 				if resp := server.handler(Line{server.lineno, line}); resp != "" {
-					conn.PrintfLine(resp)
+					_ = conn.PrintfLine(resp)
 				}
 			}
 		}()
@@ -496,7 +496,7 @@ func TestConn(t *testing.T) {
 		})
 
 		// WithNotFound tests if the situation where a reserved job expired before
-		// the stats-job command could return sucessfully.
+		// the stats-job command could return successfully.
 		t.Run("WithNotFound", func(t *testing.T) {
 			server.HandleFunc(func(line Line) string {
 				switch {

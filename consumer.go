@@ -14,25 +14,20 @@ type Consumer struct {
 	// C offers up reserved jobs.
 	C <-chan *Job
 
-	// The tubes this consumer should watch.
-	tubes []string
-
-	// This is used to close this consumer.
+	tubes     []string
+	isPaused  bool
+	pause     chan bool
 	close     chan struct{}
 	closeOnce sync.Once
-
-	// This is used to keep track of the paused state.
-	isPaused bool
-	pause    chan bool
-	mu       sync.Mutex
+	mu        sync.Mutex
 }
 
 // NewConsumer connects to the beanstalk server that's referenced in URI and
 // returns a Consumer.
-func NewConsumer(URI string, tubes []string, config Config) (*Consumer, error) {
+func NewConsumer(uri string, tubes []string, config Config) (*Consumer, error) {
 	config = config.normalize()
 
-	conn, err := Dial(URI, config)
+	conn, err := Dial(uri, config)
 	if err != nil {
 		return nil, err
 	}
