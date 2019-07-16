@@ -23,6 +23,7 @@ var (
 	ErrNotFound     = errors.New("job not found")
 	ErrTimedOut     = errors.New("reserve timed out")
 	ErrNotIgnored   = errors.New("tube not ignored")
+	ErrTubeTooLong  = errors.New("tube name too long")
 	ErrUnexpected   = errors.New("unexpected response received")
 )
 
@@ -290,6 +291,13 @@ func (conn *Conn) touch(ctx context.Context, job *Job) error {
 
 // Watch the specified tube.
 func (conn *Conn) Watch(ctx context.Context, tube string) error {
+	// This check is performed here instead of server-side, because if the name
+	// is too long the server return both a BAD_FORMAT and an UNKNOWN_COMMAND
+	// response that makes parsing more difficult.
+	if len(tube) > 200 {
+		return ErrTubeTooLong
+	}
+
 	_, _, err := conn.lcommand(ctx, "watch %s", tube)
 	return err
 }
