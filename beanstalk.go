@@ -1,6 +1,7 @@
 package beanstalk
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/url"
@@ -66,6 +67,13 @@ func includes(a []string, s string) bool {
 	}
 
 	return false
+}
+
+func contextTimeoutFunc(d time.Duration, fn func(ctx context.Context)) {
+	ctx, cancel := context.WithTimeout(context.Background(), d)
+	defer cancel()
+
+	fn(ctx)
 }
 
 type ioHandler interface {

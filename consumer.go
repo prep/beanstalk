@@ -126,10 +126,9 @@ func (consumer *Consumer) handleIO(conn *Conn, config Config) (err error) {
 	releaseJob := func() error {
 		if job != nil {
 			releaseTimeout.Stop()
-
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-			err = job.Release(ctx)
-			cancel()
+			contextTimeoutFunc(3*time.Second, func(ctx context.Context) {
+				err = job.Release(ctx)
+			})
 
 			// Don't treat NOT_FOUND responses as a fatal error.
 			if err == ErrNotFound {
@@ -147,9 +146,9 @@ func (consumer *Consumer) handleIO(conn *Conn, config Config) (err error) {
 	// been reserved already.
 	reserveJob := func() error {
 		if job == nil && !consumer.isPaused {
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-			job, err = conn.ReserveWithTimeout(ctx, 0)
-			cancel()
+			contextTimeoutFunc(3*time.Second, func(ctx context.Context) {
+				job, err = conn.ReserveWithTimeout(ctx, 0)
+			})
 
 			switch {
 			case err != nil:
