@@ -107,61 +107,71 @@ func (consumer *Consumer) handleIO(conn *Conn, config Config) (err error) {
 	var job *Job
 	var jobC chan<- *Job
 
-	// reserveTimeout is used to wait between reserve calls.
+	// reserveTimeout is used to pause between reserve attempts when the last
+	// attempt failed to reserve a job.
 	reserveTimeout := time.NewTimer(0)
 	if consumer.isPaused {
 		reserveTimeout.Stop()
 	}
 
-	// releaseTimeout is used to release a reserved job back before it got claimed.
+	// releaseTimeout is used to release a reserved job back to prevent holding
+	// a job too long when it doesn't get claimed in a reasonable amount of time.
 	releaseTimeout := time.NewTimer(time.Second)
 	releaseTimeout.Stop()
 
-	// releaseJob releases a currently reserved job.
+	// releaseJob releases the currently reserved job.
 	releaseJob := func() error {
-		if job != nil {
-			releaseTimeout.Stop()
-			contextTimeoutFunc(3*time.Second, func(ctx context.Context) {
-				err = job.Release(ctx)
-			})
-
-			// Don't treat NOT_FOUND responses as a fatal error.
-			if err == ErrNotFound {
-				config.ErrorLog.Printf("Consumer could not release job %d: %s", job.ID, err)
-				err = nil
-			}
-
-			job, jobC = nil, nil
+		if job == nil {
+			return nil
 		}
 
+		releaseTimeout.Stop()
+		contextTimeoutFunc(3*time.Second, func(ctx context.Context) {
+			err = job.Release(ctx)
+		})
+
+		// Don't treat NOT_FOUND responses as a fatal error.
+		if err == ErrNotFound {
+			config.ErrorLog.Printf("Consumer could not release job %d: %s", job.ID, err)
+			err = nil
+		}
+
+		job, jobC = nil, nil
 		return err
 	}
 
-	// reserveJob reserves a job unless the connection is paused, or a job has
-	// been reserved already.
+	// reserveJob reserves a job.
 	reserveJob := func() error {
-		if job == nil && !consumer.isPaused {
-			contextTimeoutFunc(3*time.Second, func(ctx context.Context) {
-				job, err = conn.ReserveWithTimeout(ctx, 0)
-			})
+		// Don't do anything if the connection is paused, or a job was already
+		// reserved.
+		if consumer.isPaused || job != nil {
+			return nil
+		}
 
-			switch {
-			case err != nil:
-				return err
-			// Job reserved, so start the release timer.
-			case job != nil:
-				jobC = config.jobC
+		// Attempt to reserve a job.
+		contextTimeoutFunc(3*time.Second, func(ctx context.Context) {
+			job, err = conn.ReserveWithTimeout(ctx, 0)
+		})
 
-				// Make sure the release timer isn't bigger than the TTR of the job.
-				if job.TouchAfter() < config.ReleaseTimeout {
-					releaseTimeout.Reset(job.TouchAfter())
-				} else {
-					releaseTimeout.Reset(config.ReleaseTimeout)
-				}
-			// No job reserved, so try again in a while.
-			default:
-				reserveTimeout.Reset(config.ReserveTimeout)
+		switch {
+		case err != nil:
+			return err
+
+		// Job reserved, so start the release timer so that the job isn't being
+		// held for too long if it doesn't get claimed.
+		case job != nil:
+			jobC = config.jobC
+
+			// Make sure the release timer isn't bigger than the TTR of the job.
+			if job.TouchAfter() < config.ReleaseTimeout {
+				releaseTimeout.Reset(job.TouchAfter())
+			} else {
+				releaseTimeout.Reset(config.ReleaseTimeout)
 			}
+
+		// No job reserved, so try again after a pause.
+		default:
+			reserveTimeout.Reset(config.ReserveTimeout)
 		}
 
 		return nil
@@ -169,7 +179,7 @@ func (consumer *Consumer) handleIO(conn *Conn, config Config) (err error) {
 
 	for {
 		select {
-		// Offer up a reserved job.
+		// Offer up the reserved job.
 		case jobC <- job:
 			job, jobC = nil, nil
 			releaseTimeout.Stop()
@@ -183,15 +193,15 @@ func (consumer *Consumer) handleIO(conn *Conn, config Config) (err error) {
 				return err
 			}
 
-		// Release the reserved job back, after having claimed it for a while.
+		// Release the reserved job back, after having held it for a while.
 		case <-releaseTimeout.C:
 			if err = releaseJob(); err != nil {
 				return err
 			}
 
-			// Immediately try to reserve a new job, which might be a different
-			// job as priorities can be shifted.
-			reserveTimeout.Reset(0)
+			// Wait a bit before attempting another reserve. This gives other workers
+			// time to pick the previously released job.
+			reserveTimeout.Reset(config.ReserveTimeout)
 
 		// Pause or unpause this consumer.
 		case consumer.isPaused = <-consumer.pause:

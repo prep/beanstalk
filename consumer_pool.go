@@ -1,6 +1,9 @@
 package beanstalk
 
-import "sync"
+import (
+	"context"
+	"sync"
+)
 
 // ConsumerPool manages a pool of consumers that share a single channel on
 // which jobs are offered.
@@ -9,6 +12,7 @@ type ConsumerPool struct {
 	C <-chan *Job
 
 	consumers []*Consumer
+	stop      chan struct{}
 	stopOnce  sync.Once
 	mu        sync.Mutex
 }
@@ -18,7 +22,7 @@ type ConsumerPool struct {
 func NewConsumerPool(uris []string, tubes []string, config Config) (*ConsumerPool, error) {
 	config = config.normalize()
 
-	pool := &ConsumerPool{C: config.jobC}
+	pool := &ConsumerPool{C: config.jobC, stop: make(chan struct{})}
 	for _, uri := range uris {
 		consumer, err := NewConsumer(uri, tubes, config)
 		if err != nil {
@@ -38,6 +42,7 @@ func (pool *ConsumerPool) Stop() {
 		pool.mu.Lock()
 		defer pool.mu.Unlock()
 
+		close(pool.stop)
 		for i, consumer := range pool.consumers {
 			consumer.Close()
 			pool.consumers[i] = nil
@@ -64,5 +69,25 @@ func (pool *ConsumerPool) Pause() {
 
 	for _, consumer := range pool.consumers {
 		consumer.Pause()
+	}
+}
+
+// Receive calls fn in a goroutine for each job it can reserve on the consumers
+// in this pool.
+func (pool *ConsumerPool) Receive(ctx context.Context, fn func(ctx context.Context, job *Job)) {
+	pool.Play()
+	defer pool.Stop()
+
+	for {
+		select {
+		// Spin up a goroutine for each reserved job.
+		case job := <-pool.C:
+			go fn(ctx, job)
+
+		case <-ctx.Done():
+			return
+		case <-pool.stop:
+			return
+		}
 	}
 }
