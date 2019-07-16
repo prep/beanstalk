@@ -28,8 +28,6 @@ func ParseURI(URI string) (string, bool, error) {
 			return "", false, err
 		}
 
-		fmt.Printf("%#v\n", URL)
-
 		// Determine the protocol scheme of the URI.
 		switch strings.ToLower(URL.Scheme) {
 		case "beanstalk":
