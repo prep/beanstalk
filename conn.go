@@ -15,7 +15,7 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-// These error may be returned by any of Conn's functions.
+// These error may be returned by any of Conn's methods.
 var (
 	ErrBuried       = errors.New("job was buried")
 	ErrDeadline     = errors.New("deadline soon")
