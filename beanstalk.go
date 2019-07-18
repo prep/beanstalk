@@ -69,11 +69,11 @@ func includes(a []string, s string) bool {
 	return false
 }
 
-func contextTimeoutFunc(d time.Duration, fn func(ctx context.Context)) {
+func contextTimeoutFunc(d time.Duration, fn func(ctx context.Context) error) error {
 	ctx, cancel := context.WithTimeout(context.Background(), d)
 	defer cancel()
 
-	fn(ctx)
+	return fn(ctx)
 }
 
 type ioHandler interface {
