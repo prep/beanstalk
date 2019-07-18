@@ -11,6 +11,7 @@ type ConsumerPool struct {
 	// C offers up reserved jobs.
 	C <-chan *Job
 
+	config    Config
 	consumers []*Consumer
 	stop      chan struct{}
 	stopOnce  sync.Once
@@ -22,7 +23,7 @@ type ConsumerPool struct {
 func NewConsumerPool(uris []string, tubes []string, config Config) (*ConsumerPool, error) {
 	config = config.normalize()
 
-	pool := &ConsumerPool{C: config.jobC, stop: make(chan struct{})}
+	pool := &ConsumerPool{C: config.jobC, config: config, stop: make(chan struct{})}
 	for _, uri := range uris {
 		consumer, err := NewConsumer(uri, tubes, config)
 		if err != nil {
@@ -72,22 +73,28 @@ func (pool *ConsumerPool) Pause() {
 	}
 }
 
-// Receive calls fn in a goroutine for each job it can reserve on the consumers
-// in this pool.
+// Receive calls fn in for each job it can reserve on the consumers in this pool.
 func (pool *ConsumerPool) Receive(ctx context.Context, fn func(ctx context.Context, job *Job)) {
-	pool.Play()
-	defer pool.Stop()
+	var wg sync.WaitGroup
+	wg.Add(pool.config.NumGoroutines)
 
-	for {
-		select {
-		// Spin up a goroutine for each reserved job.
-		case job := <-pool.C:
-			go fn(ctx, job)
+	for i := 0; i < pool.config.NumGoroutines; i++ {
+		go func() {
+			defer wg.Done()
 
-		case <-ctx.Done():
-			return
-		case <-pool.stop:
-			return
-		}
+			for {
+				select {
+				case job := <-pool.C:
+					fn(ctx, job)
+
+				case <-ctx.Done():
+					return
+				case <-pool.stop:
+					return
+				}
+			}
+		}()
 	}
+
+	wg.Wait()
 }

@@ -15,6 +15,7 @@ type Consumer struct {
 	C <-chan *Job
 
 	tubes     []string
+	config    Config
 	isPaused  bool
 	pause     chan bool
 	close     chan struct{}
@@ -35,9 +36,10 @@ func NewConsumer(uri string, tubes []string, config Config) (*Consumer, error) {
 	consumer := &Consumer{
 		C:        config.jobC,
 		tubes:    tubes,
-		close:    make(chan struct{}),
-		pause:    make(chan bool, 1),
+		config:   config,
 		isPaused: true,
+		pause:    make(chan bool, 1),
+		close:    make(chan struct{}),
 	}
 
 	keepConnected(consumer, conn, config, consumer.close)
@@ -75,6 +77,32 @@ func (consumer *Consumer) Pause() {
 	case <-consumer.pause:
 		consumer.pause <- true
 	}
+}
+
+// Receive calls fn for each job it can reserve on this consumer.
+func (consumer *Consumer) Receive(ctx context.Context, fn func(ctx context.Context, job *Job)) {
+	var wg sync.WaitGroup
+	wg.Add(consumer.config.NumGoroutines)
+
+	for i := 0; i < consumer.config.NumGoroutines; i++ {
+		go func() {
+			defer wg.Done()
+
+			for {
+				select {
+				case job := <-consumer.C:
+					fn(ctx, job)
+
+				case <-ctx.Done():
+					return
+				case <-consumer.close:
+					return
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
 }
 
 func (consumer *Consumer) setupConnection(conn *Conn, config Config) error {

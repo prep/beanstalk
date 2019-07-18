@@ -10,6 +10,9 @@ import (
 // A Config structure is used to configure a Consumer, Producer, one of its
 // pools or Conn.
 type Config struct {
+	// NumGoroutines is the number of goroutines that the Receive() method will
+	// spin up.
+	NumGoroutines int
 	// ReserveTimeout is the time a consumer should wait before reserving a job,
 	// when the last attempt didn't yield a job.
 	// The default is to wait 5 seconds.
@@ -33,6 +36,9 @@ type Config struct {
 }
 
 func (config Config) normalize() Config {
+	if config.NumGoroutines < 1 {
+		config.NumGoroutines = 1
+	}
 	if config.ReserveTimeout <= 0 {
 		config.ReserveTimeout = 5 * time.Second
 	}
