@@ -1,8 +1,8 @@
 # Package beanstalk
 `import "github.com/prep/beanstalk"`
 
-[Overview](#user-content-overview)
-[Index](#user-content-index)
+[Overview](#user-content-overview)  
+[Index](#user-content-index)  
 
 ## Overview
 Package beanstalk implements a beanstalk client that includes various
@@ -104,7 +104,7 @@ host:port notation. This package also supports URI formats like beanstalk:// for
 a plaintext connection, and beanstalks:// or tls:// for encrypted connections.
 
 ## Index
-[Variables](#user-content-variables)
+[Variables](#user-content-variables)  
 [func ParseURI(uri string) (string, bool, error)](#user-content-func-ParseURI)
 [type Config](#user-content-type-Config)
 
@@ -227,26 +227,26 @@ type Conn struct {
 }
 ```
 
-### func Dial(uri string, config Config) (*Conn, error)
+#### func Dial(uri string, config Config) (*Conn, error)
 Dial into a beanstalk server.
 
-### func (conn *Conn) Close() error
+#### func (conn *Conn) Close() error
 Close this connection.
 
-### func (conn *Conn) Ignore(ctx context.Context, tube string) error
+#### func (conn *Conn) Ignore(ctx context.Context, tube string) error
 Ignore the specified tube.
 
-### func (conn *Conn) Put(ctx context.Context, tube string, body []byte, params PutParams) (uint64, error)
+#### func (conn *Conn) Put(ctx context.Context, tube string, body []byte, params PutParams) (uint64, error)
 Put a job in the specified tube.
 
-### func (conn *Conn) ReserveWithTimeout(ctx context.Context, timeout time.Duration) (*Job, error)
+#### func (conn *Conn) ReserveWithTimeout(ctx context.Context, timeout time.Duration) (*Job, error)
 ReserveWithTimeout tries to reserve a job and block for up to a maximum of
 timeout. If no job could be reserved, this function will return without a
 job or error.
 
-### func (conn *Conn) String() string
+#### func (conn *Conn) String() string
 
-### func (conn *Conn) Watch(ctx context.Context, tube string) error
+#### func (conn *Conn) Watch(ctx context.Context, tube string) error
 Watch the specified tube.
 
 
@@ -263,20 +263,20 @@ type Consumer struct {
 }
 ```
 
-### func NewConsumer(uri string, tubes []string, config Config) (*Consumer, error)
+#### func NewConsumer(uri string, tubes []string, config Config) (*Consumer, error)
 NewConsumer connects to the beanstalk server that's referenced in URI and
 returns a Consumer.
 
-### func (consumer *Consumer) Close()
+#### func (consumer *Consumer) Close()
 Close this consumer's connection.
 
-### func (consumer *Consumer) Pause()
+#### func (consumer *Consumer) Pause()
 Pause this consumer.
 
-### func (consumer *Consumer) Play()
+#### func (consumer *Consumer) Play()
 Play unpauses this customer.
 
-### func (consumer *Consumer) Receive(ctx context.Context, fn func(ctx context.Context, job *Job))
+#### func (consumer *Consumer) Receive(ctx context.Context, fn func(ctx context.Context, job *Job))
 Receive calls fn for each job it can reserve on this consumer.
 
 
@@ -292,20 +292,20 @@ type ConsumerPool struct {
 }
 ```
 
-### func NewConsumerPool(uris []string, tubes []string, config Config) (*ConsumerPool, error)
+#### func NewConsumerPool(uris []string, tubes []string, config Config) (*ConsumerPool, error)
 NewConsumerPool creates a pool of Consumers from the list of URIs that has
 been provided.
 
-### func (pool *ConsumerPool) Pause()
+#### func (pool *ConsumerPool) Pause()
 Pause all the consumers in this pool.
 
-### func (pool *ConsumerPool) Play()
+#### func (pool *ConsumerPool) Play()
 Play unpauses all the consumers in this pool.
 
-### func (pool *ConsumerPool) Receive(ctx context.Context, fn func(ctx context.Context, job *Job))
+#### func (pool *ConsumerPool) Receive(ctx context.Context, fn func(ctx context.Context, job *Job))
 Receive calls fn in for each job it can reserve on the consumers in this pool.
 
-### func (pool *ConsumerPool) Stop()
+#### func (pool *ConsumerPool) Stop()
 Stop all the consumers in this pool.
 
 
@@ -334,25 +334,25 @@ type Job struct {
 }
 ```
 
-### func (job *Job) Bury(ctx context.Context) error
+#### func (job *Job) Bury(ctx context.Context) error
 Bury this job.
 
-### func (job *Job) BuryWithPriority(ctx context.Context, priority uint32) error
+#### func (job *Job) BuryWithPriority(ctx context.Context, priority uint32) error
 BuryWithPriority buries this job with the specified priority.
 
-### func (job *Job) Delete(ctx context.Context) error
+#### func (job *Job) Delete(ctx context.Context) error
 Delete this job.
 
-### func (job *Job) Release(ctx context.Context) error
+#### func (job *Job) Release(ctx context.Context) error
 Release this job back with its original priority and without delay.
 
-### func (job *Job) ReleaseWithParams(ctx context.Context, priority uint32, delay time.Duration) error
+#### func (job *Job) ReleaseWithParams(ctx context.Context, priority uint32, delay time.Duration) error
 ReleaseWithParams releases this job back with the specified priority and delay.
 
-### func (job *Job) Touch(ctx context.Context) error
+#### func (job *Job) Touch(ctx context.Context) error
 Touch the job thereby resetting its reserved status.
 
-### func (job *Job) TouchAfter() time.Duration
+#### func (job *Job) TouchAfter() time.Duration
 TouchAfter returns the duration until this jobs needs to be touched for its
 reservation to be retained.
 
@@ -366,15 +366,15 @@ type Producer struct {
 }
 ```
 
-### func NewProducer(uri string, config Config) (*Producer, error)
+#### func NewProducer(uri string, config Config) (*Producer, error)
 NewProducer creates a connection to a beanstalk server, but will return an
 error if the connection fails. Once established, the connection will be
 maintained in the background.
 
-### func (producer *Producer) Close()
+#### func (producer *Producer) Close()
 Close this consumer's connection.
 
-### func (producer *Producer) Put(ctx context.Context, tube string, body []byte, params PutParams) (uint64, error)
+#### func (producer *Producer) Put(ctx context.Context, tube string, body []byte, params PutParams) (uint64, error)
 Put inserts a job into beanstalk.
 
 
@@ -388,14 +388,14 @@ type ProducerPool struct {
 }
 ```
 
-### func NewProducerPool(uris []string, config Config) (*ProducerPool, error)
+#### func NewProducerPool(uris []string, config Config) (*ProducerPool, error)
 NewProducerPool creates a pool of Producers from the list of URIs that has
 been provided.
 
-### func (pool *ProducerPool) Put(ctx context.Context, tube string, body []byte, params PutParams) (uint64, error)
+#### func (pool *ProducerPool) Put(ctx context.Context, tube string, body []byte, params PutParams) (uint64, error)
 Put a job into the specified tube.
 
-### func (pool *ProducerPool) Stop()
+#### func (pool *ProducerPool) Stop()
 Stop all the producers in this pool.
 
 
