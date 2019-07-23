@@ -185,6 +185,24 @@ ErrJobFinished is returned when a job was already finished.
 var ErrJobFinished = errors.New("job was already finished")
 ```
 
+## func ParseURI
+
+```go
+func ParseURI(uri string) (string, bool, error)
+```
+ParseURI returns the socket of the specified URI and if the connection is
+supposed to be a TLS or plaintext connection. Valid URI schemes are:
+
+```go
+		beanstalk://host:port
+		beanstalks://host:port
+		tls://host:port
+```
+
+Where both the beanstalks and tls scheme mean the same thing. Alternatively,
+it is also possibly to just specify the host:port combo which is assumed to
+be a plaintext connection.
+
 ## type Config
 A Config structure is used to configure a Consumer, Producer, one of its
 pools or Conn.
