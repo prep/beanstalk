@@ -185,7 +185,7 @@ ErrJobFinished is returned when a job was already finished.
 var ErrJobFinished = errors.New("job was already finished")
 ```
 
-## func ParseURI
+### func ParseURI
 
 ```go
 func ParseURI(uri string) (string, bool, error)
@@ -203,7 +203,7 @@ Where both the beanstalks and tls scheme mean the same thing. Alternatively,
 it is also possibly to just specify the host:port combo which is assumed to
 be a plaintext connection.
 
-## type Config
+### type Config
 A Config structure is used to configure a Consumer, Producer, one of its
 pools or Conn.
 
@@ -235,7 +235,7 @@ type Config struct {
 ```
 
 
-## type Conn
+### type Conn
 Conn describes a connection to a beanstalk server.
 
 ```go
@@ -245,30 +245,58 @@ type Conn struct {
 }
 ```
 
-#### func Dial(uri string, config Config) (*Conn, error)
+#### func Dial
+
+```go
+func Dial(uri string, config Config) (*Conn, error)
+```
 Dial into a beanstalk server.
 
-#### func (conn *Conn) Close() error
+#### func (*Conn) Close
+
+```go
+func (conn *Conn) Close() error
+```
 Close this connection.
 
-#### func (conn *Conn) Ignore(ctx context.Context, tube string) error
+#### func (*Conn) Ignore
+
+```go
+func (conn *Conn) Ignore(ctx context.Context, tube string) error
+```
 Ignore the specified tube.
 
-#### func (conn *Conn) Put(ctx context.Context, tube string, body []byte, params PutParams) (uint64, error)
+#### func (*Conn) Put
+
+```go
+func (conn *Conn) Put(ctx context.Context, tube string, body []byte, params PutParams) (uint64, error)
+```
 Put a job in the specified tube.
 
-#### func (conn *Conn) ReserveWithTimeout(ctx context.Context, timeout time.Duration) (*Job, error)
+#### func (*Conn) ReserveWithTimeout
+
+```go
+func (conn *Conn) ReserveWithTimeout(ctx context.Context, timeout time.Duration) (*Job, error)
+```
 ReserveWithTimeout tries to reserve a job and block for up to a maximum of
 timeout. If no job could be reserved, this function will return without a
 job or error.
 
-#### func (conn *Conn) String() string
+#### func (*Conn) String
 
-#### func (conn *Conn) Watch(ctx context.Context, tube string) error
+```go
+func (conn *Conn) String() string
+```
+
+#### func (*Conn) Watch
+
+```go
+func (conn *Conn) Watch(ctx context.Context, tube string) error
+```
 Watch the specified tube.
 
 
-## type Consumer
+### type Consumer
 Consumer maintains a connnection to a beanstalk server and offers up jobs
 on its exposed jobs channel. When it gets disconnected, it automatically
 tries to reconnect.
@@ -281,24 +309,44 @@ type Consumer struct {
 }
 ```
 
-#### func NewConsumer(uri string, tubes []string, config Config) (*Consumer, error)
+#### func NewConsumer
+
+```go
+func NewConsumer(uri string, tubes []string, config Config) (*Consumer, error)
+```
 NewConsumer connects to the beanstalk server that's referenced in URI and
 returns a Consumer.
 
-#### func (consumer *Consumer) Close()
+#### func (*Consumer) Close
+
+```go
+func (consumer *Consumer) Close()
+```
 Close this consumer's connection.
 
-#### func (consumer *Consumer) Pause()
+#### func (*Consumer) Pause
+
+```go
+func (consumer *Consumer) Pause()
+```
 Pause this consumer.
 
-#### func (consumer *Consumer) Play()
+#### func (*Consumer) Play
+
+```go
+func (consumer *Consumer) Play()
+```
 Play unpauses this customer.
 
-#### func (consumer *Consumer) Receive(ctx context.Context, fn func(ctx context.Context, job *Job))
+#### func (*Consumer) Receive
+
+```go
+func (consumer *Consumer) Receive(ctx context.Context, fn func(ctx context.Context, job *Job))
+```
 Receive calls fn for each job it can reserve on this consumer.
 
 
-## type ConsumerPool
+### type ConsumerPool
 ConsumerPool manages a pool of consumers that share a single channel on
 which jobs are offered.
 
@@ -310,24 +358,44 @@ type ConsumerPool struct {
 }
 ```
 
-#### func NewConsumerPool(uris []string, tubes []string, config Config) (*ConsumerPool, error)
+#### func NewConsumerPool
+
+```go
+func NewConsumerPool(uris []string, tubes []string, config Config) (*ConsumerPool, error)
+```
 NewConsumerPool creates a pool of Consumers from the list of URIs that has
 been provided.
 
-#### func (pool *ConsumerPool) Pause()
+#### func (*ConsumerPool) Pause
+
+```go
+func (pool *ConsumerPool) Pause()
+```
 Pause all the consumers in this pool.
 
-#### func (pool *ConsumerPool) Play()
+#### func (*ConsumerPool) Play
+
+```go
+func (pool *ConsumerPool) Play()
+```
 Play unpauses all the consumers in this pool.
 
-#### func (pool *ConsumerPool) Receive(ctx context.Context, fn func(ctx context.Context, job *Job))
+#### func (*ConsumerPool) Receive
+
+```go
+func (pool *ConsumerPool) Receive(ctx context.Context, fn func(ctx context.Context, job *Job))
+```
 Receive calls fn in for each job it can reserve on the consumers in this pool.
 
-#### func (pool *ConsumerPool) Stop()
+#### func (*ConsumerPool) Stop
+
+```go
+func (pool *ConsumerPool) Stop()
+```
 Stop all the consumers in this pool.
 
 
-## type Job
+### type Job
 Job describes a beanstalk job and its stats.
 
 ```go
@@ -352,30 +420,58 @@ type Job struct {
 }
 ```
 
-#### func (job *Job) Bury(ctx context.Context) error
+#### func (*Job) Bury
+
+```go
+func (job *Job) Bury(ctx context.Context) error
+```
 Bury this job.
 
-#### func (job *Job) BuryWithPriority(ctx context.Context, priority uint32) error
+#### func (*Job) BuryWithPriority
+
+```go
+func (job *Job) BuryWithPriority(ctx context.Context, priority uint32) error
+```
 BuryWithPriority buries this job with the specified priority.
 
-#### func (job *Job) Delete(ctx context.Context) error
+#### func (*Job) Delete
+
+```go
+func (job *Job) Delete(ctx context.Context) error
+```
 Delete this job.
 
-#### func (job *Job) Release(ctx context.Context) error
+#### func (*Job) Release
+
+```go
+func (job *Job) Release(ctx context.Context) error
+```
 Release this job back with its original priority and without delay.
 
-#### func (job *Job) ReleaseWithParams(ctx context.Context, priority uint32, delay time.Duration) error
+#### func (*Job) ReleaseWithParams
+
+```go
+func (job *Job) ReleaseWithParams(ctx context.Context, priority uint32, delay time.Duration) error
+```
 ReleaseWithParams releases this job back with the specified priority and delay.
 
-#### func (job *Job) Touch(ctx context.Context) error
+#### func (*Job) Touch
+
+```go
+func (job *Job) Touch(ctx context.Context) error
+```
 Touch the job thereby resetting its reserved status.
 
-#### func (job *Job) TouchAfter() time.Duration
+#### func (*Job) TouchAfter
+
+```go
+func (job *Job) TouchAfter() time.Duration
+```
 TouchAfter returns the duration until this jobs needs to be touched for its
 reservation to be retained.
 
 
-## type Producer
+### type Producer
 Producer manages a connection for the purpose of inserting jobs.
 
 ```go
@@ -384,19 +480,31 @@ type Producer struct {
 }
 ```
 
-#### func NewProducer(uri string, config Config) (*Producer, error)
+#### func NewProducer
+
+```go
+func NewProducer(uri string, config Config) (*Producer, error)
+```
 NewProducer creates a connection to a beanstalk server, but will return an
 error if the connection fails. Once established, the connection will be
 maintained in the background.
 
-#### func (producer *Producer) Close()
+#### func (*Producer) Close
+
+```go
+func (producer *Producer) Close()
+```
 Close this consumer's connection.
 
-#### func (producer *Producer) Put(ctx context.Context, tube string, body []byte, params PutParams) (uint64, error)
+#### func (*Producer) Put
+
+```go
+func (producer *Producer) Put(ctx context.Context, tube string, body []byte, params PutParams) (uint64, error)
+```
 Put inserts a job into beanstalk.
 
 
-## type ProducerPool
+### type ProducerPool
 ProducerPool manages a connection pool of Producers and provides a simple
 interface for balancing Put requests over the pool of connections.
 
@@ -406,18 +514,30 @@ type ProducerPool struct {
 }
 ```
 
-#### func NewProducerPool(uris []string, config Config) (*ProducerPool, error)
+#### func NewProducerPool
+
+```go
+func NewProducerPool(uris []string, config Config) (*ProducerPool, error)
+```
 NewProducerPool creates a pool of Producers from the list of URIs that has
 been provided.
 
-#### func (pool *ProducerPool) Put(ctx context.Context, tube string, body []byte, params PutParams) (uint64, error)
+#### func (*ProducerPool) Put
+
+```go
+func (pool *ProducerPool) Put(ctx context.Context, tube string, body []byte, params PutParams) (uint64, error)
+```
 Put a job into the specified tube.
 
-#### func (pool *ProducerPool) Stop()
+#### func (*ProducerPool) Stop
+
+```go
+func (pool *ProducerPool) Stop()
+```
 Stop all the producers in this pool.
 
 
-## type PutParams
+### type PutParams
 PutParams are the parameters used to perform a Put operation.
 
 ```go
