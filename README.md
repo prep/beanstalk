@@ -51,36 +51,6 @@ producing beanstalk jobs. If exports a Put method that load balances between the
 available connections
 
 ```go
-	conn, err := beanstalk.Dial("localhost:11300", beanstalk.Config{})
-	if err != nil {
-		// handle error
-	}
-	defer conn.Close()
-
-	id, err := conn.Put(ctx, "example_tube", []byte("Hello World"), beanstalk.PutParams{
-		Priority: 1024,
-		Delay:    2 * time.Second,
-		TTR:      1 * time.Minute,
-	})
-	if err != nil {
-		// handle error
-	}
-
-	if err = conn.Watch(ctx, "example_tube"); err != nil {
-		// handle error
-	}
-
-	job, err := conn.ReserveWithTimeout(ctx, 3*time.Second)
-	if err != nil {
-		// handle error
-	}
-
-	// process job
-
-	if err = job.Delete(ctx); err != nil {
-		// handle error
-	}
-
 	pool, err := beanstalk.NewProducerPool([]string{"localhost:11300"}, beanstalk.Config{})
 	if err != nil {
 		// handle error
@@ -98,48 +68,6 @@ A ConsumerPool manages one or more client connections used specifically for
 consuming beanstalk jobs. If exports a channel on which Job types can be read.
 
 ```go
-	conn, err := beanstalk.Dial("localhost:11300", beanstalk.Config{})
-	if err != nil {
-		// handle error
-	}
-	defer conn.Close()
-
-	id, err := conn.Put(ctx, "example_tube", []byte("Hello World"), beanstalk.PutParams{
-		Priority: 1024,
-		Delay:    2 * time.Second,
-		TTR:      1 * time.Minute,
-	})
-	if err != nil {
-		// handle error
-	}
-
-	if err = conn.Watch(ctx, "example_tube"); err != nil {
-		// handle error
-	}
-
-	job, err := conn.ReserveWithTimeout(ctx, 3*time.Second)
-	if err != nil {
-		// handle error
-	}
-
-	// process job
-
-	if err = job.Delete(ctx); err != nil {
-		// handle error
-	}
-
-	pool, err := beanstalk.NewProducerPool([]string{"localhost:11300"}, beanstalk.Config{})
-	if err != nil {
-		// handle error
-	}
-	defer pool.Stop()
-
-	id, err := pool.Put(ctx, "example_tube", []byte("Hello World"), beanstalk.PutParams{
-		Priority: 1024,
-		Delay:    2 * time.Second,
-		TTR:      1 * time.Minute,
-	}
-
 	pool, err := beanstalk.NewConsumerPool([]string{"localhost:11300"}, []string{"example_tube"}, beanstalk.Config{})
 	if err != nil {
 		// handle error
@@ -161,63 +89,6 @@ provide a handler function that is called for every reserved beanstalk job by
 calling the Receive method on ConsumerPool.
 
 ```go
-	conn, err := beanstalk.Dial("localhost:11300", beanstalk.Config{})
-	if err != nil {
-		// handle error
-	}
-	defer conn.Close()
-
-	id, err := conn.Put(ctx, "example_tube", []byte("Hello World"), beanstalk.PutParams{
-		Priority: 1024,
-		Delay:    2 * time.Second,
-		TTR:      1 * time.Minute,
-	})
-	if err != nil {
-		// handle error
-	}
-
-	if err = conn.Watch(ctx, "example_tube"); err != nil {
-		// handle error
-	}
-
-	job, err := conn.ReserveWithTimeout(ctx, 3*time.Second)
-	if err != nil {
-		// handle error
-	}
-
-	// process job
-
-	if err = job.Delete(ctx); err != nil {
-		// handle error
-	}
-
-	pool, err := beanstalk.NewProducerPool([]string{"localhost:11300"}, beanstalk.Config{})
-	if err != nil {
-		// handle error
-	}
-	defer pool.Stop()
-
-	id, err := pool.Put(ctx, "example_tube", []byte("Hello World"), beanstalk.PutParams{
-		Priority: 1024,
-		Delay:    2 * time.Second,
-		TTR:      1 * time.Minute,
-	}
-
-	pool, err := beanstalk.NewConsumerPool([]string{"localhost:11300"}, []string{"example_tube"}, beanstalk.Config{})
-	if err != nil {
-		// handle error
-	}
-	defer pool.Stop()
-
-	pool.Play()
-	for job := range pool.C {
-		// process job
-
-		if err = job.Delete(ctx); err != nil {
-			// handle error
-		}
-	}
-
 	pool.Play()
 	pool.Receive(ctx, func(ctx context.Context, job *beanstalk.Job) {
 		// process job
