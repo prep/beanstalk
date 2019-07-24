@@ -18,7 +18,7 @@ import (
 // These error may be returned by any of Conn's methods.
 var (
 	ErrBuried       = errors.New("job was buried")
-	ErrDeadline     = errors.New("deadline soon")
+	ErrDeadlineSoon = errors.New("deadline soon")
 	ErrDisconnected = errors.New("client disconnected")
 	ErrNotFound     = errors.New("job not found")
 	ErrTimedOut     = errors.New("reserve timed out")
@@ -156,7 +156,7 @@ func (conn *Conn) command(ctx context.Context, format string, params ...interfac
 		case "BURIED":
 			return 0, nil, ErrBuried
 		case "DEADLINE_SOON":
-			return 0, nil, ErrDeadline
+			return 0, nil, ErrDeadlineSoon
 		case "NOT_FOUND":
 			return 0, nil, ErrNotFound
 		case "NOT_IGNORED":
@@ -236,7 +236,7 @@ func (conn *Conn) ReserveWithTimeout(ctx context.Context, timeout time.Duration)
 	reservedAt := time.Now()
 	id, body, err := conn.command(ctx, "reserve-with-timeout %d", timeout/time.Second)
 	switch {
-	case err == ErrDeadline:
+	case err == ErrDeadlineSoon:
 		return nil, nil
 	case err == ErrNotFound:
 		return nil, nil
