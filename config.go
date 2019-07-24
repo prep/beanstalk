@@ -12,6 +12,7 @@ import (
 type Config struct {
 	// NumGoroutines is the number of goroutines that the Receive() method will
 	// spin up.
+	// The default is to spin up 1 goroutine.
 	NumGoroutines int
 	// ReserveTimeout is the time a consumer should wait before reserving a job,
 	// when the last attempt didn't yield a job.
