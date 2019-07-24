@@ -15,35 +15,35 @@ abstractions to make producing and consuming jobs easier.
 Create a Conn if you want the most basic version of a beanstalk client:
 
 ```go
-	conn, err := beanstalk.Dial("localhost:11300", beanstalk.Config{})
-	if err != nil {
-		// handle error
-	}
-	defer conn.Close()
+conn, err := beanstalk.Dial("localhost:11300", beanstalk.Config{})
+if err != nil {
+	// handle error
+}
+defer conn.Close()
 
-	id, err := conn.Put(ctx, "example_tube", []byte("Hello World"), beanstalk.PutParams{
-		Priority: 1024,
-		Delay:    2 * time.Second,
-		TTR:      1 * time.Minute,
-	})
-	if err != nil {
-		// handle error
-	}
+id, err := conn.Put(ctx, "example_tube", []byte("Hello World"), beanstalk.PutParams{
+	Priority: 1024,
+	Delay:    2 * time.Second,
+	TTR:      1 * time.Minute,
+})
+if err != nil {
+	// handle error
+}
 
-	if err = conn.Watch(ctx, "example_tube"); err != nil {
-		// handle error
-	}
+if err = conn.Watch(ctx, "example_tube"); err != nil {
+	// handle error
+}
 
-	job, err := conn.ReserveWithTimeout(ctx, 3*time.Second)
-	if err != nil {
-		// handle error
-	}
+job, err := conn.ReserveWithTimeout(ctx, 3*time.Second)
+if err != nil {
+	// handle error
+}
 
-	// process job
+// process job
 
-	if err = job.Delete(ctx); err != nil {
-		// handle error
-	}
+if err = job.Delete(ctx); err != nil {
+	// handle error
+}
 ```
 
 In most cases it is easier to leverage ConsumerPool and ProducerPool to manage
@@ -55,37 +55,37 @@ producing beanstalk jobs. If exports a Put method that load balances between the
 available connections
 
 ```go
-	pool, err := beanstalk.NewProducerPool([]string{"localhost:11300"}, beanstalk.Config{})
-	if err != nil {
-		// handle error
-	}
-	defer pool.Stop()
+pool, err := beanstalk.NewProducerPool([]string{"localhost:11300"}, beanstalk.Config{})
+if err != nil {
+	// handle error
+}
+defer pool.Stop()
 
-	id, err := pool.Put(ctx, "example_tube", []byte("Hello World"), beanstalk.PutParams{
-		Priority: 1024,
-		Delay:    2 * time.Second,
-		TTR:      1 * time.Minute,
-	}
+id, err := pool.Put(ctx, "example_tube", []byte("Hello World"), beanstalk.PutParams{
+	Priority: 1024,
+	Delay:    2 * time.Second,
+	TTR:      1 * time.Minute,
+}
 ```
 
 A ConsumerPool manages one or more client connections used specifically for
 consuming beanstalk jobs. If exports a channel on which Job types can be read.
 
 ```go
-	pool, err := beanstalk.NewConsumerPool([]string{"localhost:11300"}, []string{"example_tube"}, beanstalk.Config{})
-	if err != nil {
+pool, err := beanstalk.NewConsumerPool([]string{"localhost:11300"}, []string{"example_tube"}, beanstalk.Config{})
+if err != nil {
+	// handle error
+}
+defer pool.Stop()
+
+pool.Play()
+for job := range pool.C {
+	// process job
+
+	if err = job.Delete(ctx); err != nil {
 		// handle error
 	}
-	defer pool.Stop()
-
-	pool.Play()
-	for job := range pool.C {
-		// process job
-
-		if err = job.Delete(ctx); err != nil {
-			// handle error
-		}
-	}
+}
 ```
 
 Alternatively, instead of leveraging the exported channel it is possible to
@@ -93,14 +93,14 @@ provide a handler function that is called for every reserved beanstalk job by
 calling the Receive method on ConsumerPool.
 
 ```go
-	pool.Play()
-	pool.Receive(ctx, func(ctx context.Context, job *beanstalk.Job) {
-		// process job
+pool.Play()
+pool.Receive(ctx, func(ctx context.Context, job *beanstalk.Job) {
+	// process job
 
-		if err = job.Delete(ctx); err != nil {
-			// handle error
-		}
-	})
+	if err = job.Delete(ctx); err != nil {
+		// handle error
+	}
+})
 ```
 
 In the above examples the beanstalk server was referenced by way of the
@@ -198,9 +198,9 @@ ParseURI returns the socket of the specified URI and if the connection is
 supposed to be a TLS or plaintext connection. Valid URI schemes are:
 
 ```go
-		beanstalk://host:port
-		beanstalks://host:port
-		tls://host:port
+beanstalk://host:port
+beanstalks://host:port
+tls://host:port
 ```
 
 Where both the beanstalks and tls scheme mean the same thing. Alternatively,
