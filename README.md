@@ -169,7 +169,7 @@ These error may be returned by any of Conn's methods.
 ```go
 var (
 	ErrBuried	= errors.New("job was buried")
-	ErrDeadline	= errors.New("deadline soon")
+	ErrDeadlineSoon	= errors.New("deadline soon")
 	ErrDisconnected	= errors.New("client disconnected")
 	ErrNotFound	= errors.New("job not found")
 	ErrTimedOut	= errors.New("reserve timed out")
@@ -211,6 +211,7 @@ pools or Conn.
 type Config struct {
 	// NumGoroutines is the number of goroutines that the Receive() method will
 	// spin up.
+	// The default is to spin up 1 goroutine.
 	NumGoroutines	int
 	// ReserveTimeout is the time a consumer should wait before reserving a job,
 	// when the last attempt didn't yield a job.
