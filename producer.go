@@ -3,6 +3,8 @@ package beanstalk
 import (
 	"context"
 	"sync"
+
+	"go.opencensus.io/trace"
 )
 
 // Producer manages a connection for the purpose of inserting jobs.
@@ -69,6 +71,9 @@ func (producer *Producer) handleIO(conn *Conn, config Config) error {
 
 // Put inserts a job into beanstalk.
 func (producer *Producer) Put(ctx context.Context, tube string, body []byte, params PutParams) (uint64, error) {
+	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/Producer.Put")
+	defer span.End()
+
 	producer.mu.Lock()
 	defer producer.mu.Unlock()
 

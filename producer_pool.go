@@ -4,6 +4,8 @@ import (
 	"context"
 	"math/rand"
 	"sync"
+
+	"go.opencensus.io/trace"
 )
 
 // ProducerPool manages a connection pool of Producers and provides a simple
@@ -50,6 +52,9 @@ func (pool *ProducerPool) Stop() {
 
 // Put a job into the specified tube.
 func (pool *ProducerPool) Put(ctx context.Context, tube string, body []byte, params PutParams) (uint64, error) {
+	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/ProducerPool.Put")
+	defer span.End()
+
 	pool.mu.RLock()
 	defer pool.mu.RUnlock()
 

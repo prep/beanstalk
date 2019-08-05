@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"go.opencensus.io/trace"
 	"gopkg.in/yaml.v2"
 )
 
@@ -184,6 +185,9 @@ func (conn *Conn) lcommand(ctx context.Context, format string, params ...interfa
 }
 
 func (conn *Conn) bury(ctx context.Context, job *Job, priority uint32) error {
+	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/Conn.bury")
+	defer span.End()
+
 	_, _, err := conn.lcommand(ctx, "bury %d %d", job.ID, priority)
 	if err == ErrBuried {
 		return nil
@@ -193,18 +197,27 @@ func (conn *Conn) bury(ctx context.Context, job *Job, priority uint32) error {
 }
 
 func (conn *Conn) delete(ctx context.Context, job *Job) error {
+	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/Conn.delete")
+	defer span.End()
+
 	_, _, err := conn.lcommand(ctx, "delete %d", job.ID)
 	return err
 }
 
 // Ignore the specified tube.
 func (conn *Conn) Ignore(ctx context.Context, tube string) error {
+	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/Conn.Ignore")
+	defer span.End()
+
 	_, _, err := conn.lcommand(ctx, "ignore %s", tube)
 	return err
 }
 
 // Put a job in the specified tube.
 func (conn *Conn) Put(ctx context.Context, tube string, body []byte, params PutParams) (uint64, error) {
+	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/Conn.Put")
+	defer span.End()
+
 	conn.mu.Lock()
 	defer conn.mu.Unlock()
 
@@ -222,6 +235,9 @@ func (conn *Conn) Put(ctx context.Context, tube string, body []byte, params PutP
 }
 
 func (conn *Conn) release(ctx context.Context, job *Job, priority uint32, delay time.Duration) error {
+	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/Conn.release")
+	defer span.End()
+
 	_, _, err := conn.lcommand(ctx, "release %d %d %d", job.ID, priority, delay/time.Second)
 	return err
 }
@@ -230,6 +246,9 @@ func (conn *Conn) release(ctx context.Context, job *Job, priority uint32, delay 
 // timeout. If no job could be reserved, this function will return without a
 // job or error.
 func (conn *Conn) ReserveWithTimeout(ctx context.Context, timeout time.Duration) (*Job, error) {
+	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/Conn.ReserveWithTimeout")
+	defer span.End()
+
 	conn.mu.Lock()
 	defer conn.mu.Unlock()
 
@@ -277,6 +296,9 @@ func (conn *Conn) ReserveWithTimeout(ctx context.Context, timeout time.Duration)
 
 // touch the job thereby resetting its reserved status.
 func (conn *Conn) touch(ctx context.Context, job *Job) error {
+	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/Conn.touch")
+	defer span.End()
+
 	touchedAt := time.Now()
 	if _, _, err := conn.lcommand(ctx, "touch %d", job.ID); err != nil {
 		return err
@@ -291,6 +313,9 @@ func (conn *Conn) touch(ctx context.Context, job *Job) error {
 
 // Watch the specified tube.
 func (conn *Conn) Watch(ctx context.Context, tube string) error {
+	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/Conn.Watch")
+	defer span.End()
+
 	// This check is performed here instead of server-side, because if the name
 	// is too long the server return both a BAD_FORMAT and an UNKNOWN_COMMAND
 	// response that makes parsing more difficult.
