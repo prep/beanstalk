@@ -1,116 +1,94 @@
 package beanstalk
 
-import "sync"
+import (
+	"context"
+	"sync"
 
-// Producer puts the jobs it receives on its channel into beanstalk.
+	"go.opencensus.io/trace"
+)
+
+// Producer manages a connection for the purpose of inserting jobs.
 type Producer struct {
-	url       string
-	putC      chan *Put
-	stop      chan struct{}
-	isStopped bool
-	options   *Options
-	startOnce sync.Once
-	stopOnce  sync.Once
+	conn      *Conn
+	errC      chan error
+	close     chan struct{}
+	closeOnce sync.Once
 	mu        sync.Mutex
 }
 
-// NewProducer returns a new Producer object.
-func NewProducer(url string, putC chan *Put, options *Options) (*Producer, error) {
-	if options == nil {
-		options = DefaultOptions()
-	}
+// NewProducer creates a connection to a beanstalk server, but will return an
+// error if the connection fails. Once established, the connection will be
+// maintained in the background.
+func NewProducer(uri string, config Config) (*Producer, error) {
+	config = config.normalize()
 
-	if _, _, err := ParseURL(url); err != nil {
+	conn, err := Dial(uri, config)
+	if err != nil {
 		return nil, err
 	}
 
-	return &Producer{
-		url:     url,
-		putC:    putC,
-		stop:    make(chan struct{}, 1),
-		options: options,
-	}, nil
+	producer := &Producer{
+		conn:  conn,
+		errC:  make(chan error, 1),
+		close: make(chan struct{}),
+	}
+
+	keepConnected(producer, conn, config, producer.close)
+	return producer, nil
 }
 
-// Start this producer.
-func (producer *Producer) Start() {
-	producer.startOnce.Do(func() {
-		go producer.manager()
+// Close this consumer's connection.
+func (producer *Producer) Close() {
+	producer.closeOnce.Do(func() {
+		close(producer.close)
 	})
 }
 
-// Stop this producer.
-func (producer *Producer) Stop() {
-	producer.stopOnce.Do(func() {
+func (producer *Producer) setupConnection(conn *Conn, config Config) error {
+	return nil
+}
+
+// handleIO takes jobs offered up on C and inserts them into beanstalk.
+func (producer *Producer) handleIO(conn *Conn, config Config) error {
+	producer.mu.Lock()
+	producer.conn = conn
+	producer.mu.Unlock()
+
+	select {
+	// If an error occurred in Put, return it.
+	case err := <-producer.errC:
+		return err
+
+	// Exit when this producer is closing down.
+	case <-producer.close:
 		producer.mu.Lock()
-		producer.isStopped = true
-		close(producer.stop)
+		producer.conn = nil
 		producer.mu.Unlock()
-	})
+
+		return nil
+	}
 }
 
-// manager is responsible for accepting new put requests and inserting them
-// into beanstalk.
-func (producer *Producer) manager() {
-	var client *Client
-	var lastTube string
-	var putC chan *Put
+// Put inserts a job into beanstalk.
+func (producer *Producer) Put(ctx context.Context, tube string, body []byte, params PutParams) (uint64, error) {
+	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/Producer.Put")
+	defer span.End()
 
-	// Set up a new connection.
-	newConnection, abortConnect := connect(producer.url, producer.options)
+	producer.mu.Lock()
+	defer producer.mu.Unlock()
 
-	// Close the client and reconnect.
-	reconnect := func(format string, a ...interface{}) {
-		producer.options.LogError(format, a...)
-
-		if client != nil {
-			client.Close()
-			client, putC, lastTube = nil, nil, ""
-			producer.options.LogInfo("Producer connection closed. Reconnecting")
-			newConnection, abortConnect = connect(producer.url, producer.options)
-		}
+	// If this producer isn't connected, return ErrDisconnected.
+	if producer.conn == nil {
+		return 0, ErrDisconnected
 	}
 
-	for {
-		select {
-		// Set up a new beanstalk client connection.
-		case conn := <-newConnection:
-			client, abortConnect = NewClient(conn, producer.options), nil
-			putC = producer.putC
-
-		// This case handles new 'put' requests.
-		case put := <-putC:
-			request := &put.request
-
-			if request.Tube != lastTube {
-				if err := client.Use(request.Tube); err != nil {
-					put.Response(0, err)
-					reconnect("Unable to use tube '%s': %s", request.Tube, err)
-					break
-				}
-
-				lastTube = request.Tube
-			}
-
-			// Insert the job into beanstalk and return the response.
-			id, err := client.Put(request)
-			if err != nil {
-				reconnect("Unable to put job into beanstalk: %s", err)
-			}
-
-			put.Response(id, err)
-
-		// Close the connection and stop this goroutine from running.
-		case <-producer.stop:
-			if client != nil {
-				client.Close()
-			}
-
-			if abortConnect != nil {
-				close(abortConnect)
-			}
-
-			return
-		}
+	// Insert the job. If this fails, mark the connection as disconnected and
+	// report the error to handleIO.
+	id, err := producer.conn.Put(ctx, tube, body, params)
+	if err != nil {
+		producer.conn = nil
+		producer.errC <- err
 	}
+
+	return id, err
 }
