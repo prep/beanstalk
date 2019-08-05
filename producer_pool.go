@@ -1,43 +1,48 @@
 package beanstalk
 
-import "sync"
+import (
+	"context"
+	"math/rand"
+	"sync"
 
-// ProducerPool maintains a pool of Producers with the purpose of spreading
-// incoming Put requests over the maintained Producers.
+	"go.opencensus.io/trace"
+)
+
+// ProducerPool manages a connection pool of Producers and provides a simple
+// interface for balancing Put requests over the pool of connections.
 type ProducerPool struct {
 	producers []*Producer
-	putC      chan *Put
-	putTokens chan *Put
 	stopOnce  sync.Once
+	mu        sync.RWMutex
 }
 
-// NewProducerPool creates a pool of Producer objects.
-func NewProducerPool(urls []string, options *Options) (*ProducerPool, error) {
-	pool := &ProducerPool{putC: make(chan *Put)}
-	pool.putTokens = make(chan *Put, len(urls))
+// NewProducerPool creates a pool of Producers from the list of URIs that has
+// been provided.
+func NewProducerPool(uris []string, config Config) (*ProducerPool, error) {
+	config = config.normalize()
 
-	for _, url := range urls {
-		producer, err := NewProducer(url, pool.putC, options)
+	var pool ProducerPool
+	for _, URI := range uris {
+		producer, err := NewProducer(URI, config)
 		if err != nil {
+			pool.Stop()
 			return nil, err
 		}
 
 		pool.producers = append(pool.producers, producer)
-		pool.putTokens <- NewPut(pool.putC, options)
 	}
 
-	for _, producer := range pool.producers {
-		producer.Start()
-	}
-
-	return pool, nil
+	return &pool, nil
 }
 
-// Stop shuts down all the producers in the pool.
+// Stop all the producers in this pool.
 func (pool *ProducerPool) Stop() {
 	pool.stopOnce.Do(func() {
+		pool.mu.Lock()
+		defer pool.mu.Unlock()
+
 		for i, producer := range pool.producers {
-			producer.Stop()
+			producer.Close()
 			pool.producers[i] = nil
 		}
 
@@ -45,11 +50,28 @@ func (pool *ProducerPool) Stop() {
 	})
 }
 
-// Put inserts a new job into beanstalk.
-func (pool *ProducerPool) Put(tube string, body []byte, params *PutParams) (uint64, error) {
-	put := <-pool.putTokens
-	id, err := put.Request(tube, body, params)
-	pool.putTokens <- put
+// Put a job into the specified tube.
+func (pool *ProducerPool) Put(ctx context.Context, tube string, body []byte, params PutParams) (uint64, error) {
+	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/ProducerPool.Put")
+	defer span.End()
 
-	return id, err
+	pool.mu.RLock()
+	defer pool.mu.RUnlock()
+
+	// Cycle randomly over the producers.
+	for _, num := range rand.Perm(len(pool.producers)) {
+		id, err := pool.producers[num].Put(ctx, tube, body, params)
+		switch {
+		// If a producer is disconnected, try the next one.
+		case err == ErrDisconnected:
+			continue
+		case err != nil:
+			return 0, err
+		}
+
+		return id, nil
+	}
+
+	// If no producer was found, all were disconnected.
+	return 0, ErrDisconnected
 }

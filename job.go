@@ -1,133 +1,97 @@
 package beanstalk
 
 import (
+	"context"
 	"errors"
-	"sync"
 	"time"
 )
 
-// The errors that can be returned by any of the Job functions.
-var (
-	ErrJobFinished    = errors.New("job was already finished")
-	ErrLostConnection = errors.New("the connection was lost")
-)
+// ErrJobFinished is returned when a job was already finished.
+var ErrJobFinished = errors.New("job was already finished")
 
-// Command describes a beanstalk command that finishes a reserved job.
-type Command int
-
-// These are the caller ids that are used when calling back to the Consumer.
-const (
-	Bury Command = iota
-	Delete
-	Release
-	Touch
-)
-
-// JobCommand is sent to the consumer that reserved the job with the purpose
-// of finishing a job.
-type JobCommand struct {
-	Command  Command
-	Job      *Job
-	Priority uint32
-	Delay    time.Duration
-	Err      chan error
+// PutParams are the parameters used to perform a Put operation.
+type PutParams struct {
+	Priority uint32        `yaml:"pri"`
+	Delay    time.Duration `yaml:"delay"`
+	TTR      time.Duration `yaml:"ttr"`
 }
 
-// Job contains the data of a reserved job.
+// Job describes a beanstalk job and its stats.
 type Job struct {
-	ID        uint64
-	Body      []byte
-	Priority  uint32
-	TTR       time.Duration
-	touchedAt time.Time
-	commandC  chan<- *JobCommand
-	sync.Mutex
+	ID         uint64
+	Body       []byte
+	ReservedAt time.Time
+	Stats      struct {
+		PutParams `yaml:",inline"`
+		Tube      string        `yaml:"tube"`
+		State     string        `yaml:"state"`
+		Age       time.Duration `yaml:"age"`
+		TimeLeft  time.Duration `yaml:"time-left"`
+		File      int           `yaml:"file"`
+		Reserves  int           `yaml:"reserves"`
+		Timeouts  int           `yaml:"timeouts"`
+		Releases  int           `yaml:"releases"`
+		Buries    int           `yaml:"buries"`
+		Kicks     int           `yaml:"kicks"`
+	}
+
+	conn *Conn
 }
 
-func (job *Job) cmd(command Command, priority uint32, delay time.Duration) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			err = ErrLostConnection
-		}
-	}()
+// Bury this job.
+func (job *Job) Bury(ctx context.Context) error {
+	return job.BuryWithPriority(ctx, job.Stats.Priority)
+}
 
-	if job.commandC == nil {
+// BuryWithPriority buries this job with the specified priority.
+func (job *Job) BuryWithPriority(ctx context.Context, priority uint32) error {
+	if job.conn == nil {
 		return ErrJobFinished
 	}
 
-	jobCommand := &JobCommand{
-		Command:  command,
-		Job:      job,
-		Priority: priority,
-		Delay:    delay,
-		Err:      make(chan error),
+	err := job.conn.bury(ctx, job, priority)
+	job.conn = nil
+	return err
+}
+
+// Delete this job.
+func (job *Job) Delete(ctx context.Context) error {
+	if job.conn == nil {
+		return ErrJobFinished
 	}
 
-	job.commandC <- jobCommand
-	if command != Touch {
-		job.commandC = nil
+	err := job.conn.delete(ctx, job)
+	job.conn = nil
+	return err
+}
+
+// Release this job back with its original priority and without delay.
+func (job *Job) Release(ctx context.Context) error {
+	return job.ReleaseWithParams(ctx, job.Stats.Priority, 0)
+}
+
+// ReleaseWithParams releases this job back with the specified priority and delay.
+func (job *Job) ReleaseWithParams(ctx context.Context, priority uint32, delay time.Duration) error {
+	if job.conn == nil {
+		return ErrJobFinished
 	}
 
-	return <-jobCommand.Err
+	err := job.conn.release(ctx, job, priority, delay)
+	job.conn = nil
+	return err
 }
 
-// Bury tells the consumer to bury this job with the same priority as this job
-// was inserted with.
-func (job *Job) Bury() error {
-	return job.cmd(Bury, job.Priority, 0)
-}
-
-// BuryWithPriority tells the consumer to bury this job with the specified
-// priority.
-func (job *Job) BuryWithPriority(priority uint32) error {
-	return job.cmd(Bury, priority, 0)
-}
-
-// Delete tells the consumer to delete this job.
-func (job *Job) Delete() error {
-	return job.cmd(Delete, 0, 0)
-}
-
-// Release tells the consumer to release this job with the same priority as
-// this job was inserted with and without delay.
-func (job *Job) Release() error {
-	return job.cmd(Release, job.Priority, 0)
-}
-
-// ReleaseWithParams tells the consumer to release this job with the specified
-// priority and delay.
-func (job *Job) ReleaseWithParams(priority uint32, delay time.Duration) error {
-	return job.cmd(Release, priority, delay)
-}
-
-// Touch refreshes the reserve timer for this job.
-func (job *Job) Touch() error {
-	return job.cmd(Touch, 0, 0)
-}
-
-// Mark the time this job was touched.
-func (job *Job) touched() {
-	job.Lock()
-	job.touchedAt = time.Now().UTC()
-	job.Unlock()
-}
-
-// TouchAt returns the duration after which a call to Touch() should be
-// triggered in order to keep the job reserved.
-func (job *Job) TouchAt() time.Duration {
-	var margin time.Duration
-
-	switch {
-	case job.TTR <= 3*time.Second:
-		margin = 200 * time.Millisecond
-	case job.TTR < 60*time.Second:
-		margin = time.Second
-	default:
-		margin = 3 * time.Second
+// Touch the job thereby resetting its reserved status.
+func (job *Job) Touch(ctx context.Context) error {
+	if job.conn == nil {
+		return ErrJobFinished
 	}
 
-	job.Lock()
-	defer job.Unlock()
+	return job.conn.touch(ctx, job)
+}
 
-	return job.touchedAt.Add(job.TTR - margin).Sub(time.Now().UTC())
+// TouchAfter returns the duration until this jobs needs to be touched for its
+// reservation to be retained.
+func (job *Job) TouchAfter() time.Duration {
+	return time.Until(job.ReservedAt.Add(job.Stats.TimeLeft))
 }
