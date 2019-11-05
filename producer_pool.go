@@ -11,6 +11,7 @@ import (
 // ProducerPool manages a connection pool of Producers and provides a simple
 // interface for balancing Put requests over the pool of connections.
 type ProducerPool struct {
+	config    Config
 	producers []*Producer
 	stopOnce  sync.Once
 	mu        sync.RWMutex
@@ -21,7 +22,7 @@ type ProducerPool struct {
 func NewProducerPool(uris []string, config Config) (*ProducerPool, error) {
 	config = config.normalize()
 
-	var pool ProducerPool
+	pool := &ProducerPool{config: config}
 	for _, URI := range uris {
 		producer, err := NewProducer(URI, config)
 		if err != nil {
@@ -32,7 +33,7 @@ func NewProducerPool(uris []string, config Config) (*ProducerPool, error) {
 		pool.producers = append(pool.producers, producer)
 	}
 
-	return &pool, nil
+	return pool, nil
 }
 
 // Stop all the producers in this pool.
@@ -65,8 +66,10 @@ func (pool *ProducerPool) Put(ctx context.Context, tube string, body []byte, par
 		// If a producer is disconnected, try the next one.
 		case err == ErrDisconnected:
 			continue
+		// If a producer returns any other error, log it and try the next one.
 		case err != nil:
-			return 0, err
+			pool.config.ErrorLog.Printf("ProducerPool unable to put job: %s", err)
+			continue
 		}
 
 		return id, nil
