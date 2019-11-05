@@ -68,7 +68,7 @@ func (pool *ProducerPool) Put(ctx context.Context, tube string, body []byte, par
 			continue
 		// If a producer returns any other error, log it and try the next one.
 		case err != nil:
-			pool.config.ErrorLog.Printf("ProducerPool unable to put job: %s", err)
+			pool.config.ErrorLog.Printf("ProducerPool could not put job: %s", err)
 			continue
 		}
 
