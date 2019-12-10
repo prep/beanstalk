@@ -1,7 +1,6 @@
-[![TravisCI](https://travis-ci.org/prep/beanstalk.svg?branch=master)](https://t
-ravis-ci.org/prep/beanstalk.svg?branch=master)
-[![GoDoc](https://godoc.org/github.com/prep/beanstalk?status.svg)](https://godo
-c.org/github.com/prep/beanstalk)
+[![TravisCI](https://travis-ci.org/prep/beanstalk.svg?branch=master)](https://travis-ci.org/prep/beanstalk.svg?branch=master)
+[![GoDoc](https://godoc.org/github.com/prep/beanstalk?status.svg)](https://godoc.org/github.com/prep/beanstalk)
+
 # Package beanstalk
 `import "github.com/prep/beanstalk"`
 
