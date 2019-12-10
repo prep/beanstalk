@@ -229,7 +229,6 @@ func TestConn(t *testing.T) {
 			server.HandleFunc(func(line Line) string {
 				if line.At(1, "ignore bar") {
 					return "NOT_IGNORED"
-
 				}
 
 				t.Fatalf("Unexpected client request: %s", line.line)
@@ -396,7 +395,6 @@ func TestConn(t *testing.T) {
 				return "OK 166\r\n---\r\nid: 12\r\ntube: default\r\nstate: reserved\r\npri: 512\r\nage: 23\r\ndelay: 15\r\nttr: 30\r\ntime-left: 25\r\nfile: 6\r\nreserves: 1\r\ntimeouts: 4\r\nreleases: 5\r\nburies: 2\r\nkicks: 7"
 			default:
 				t.Fatalf("Unexpected client request at line %d: %s", line.lineno, line.line)
-
 			}
 
 			return ""
@@ -506,7 +504,6 @@ func TestConn(t *testing.T) {
 					return "NOT_FOUND"
 				default:
 					t.Fatalf("Unexpected client request at line %d: %s", line.lineno, line.line)
-
 				}
 
 				return ""
@@ -531,7 +528,6 @@ func TestConn(t *testing.T) {
 				return "TOUCHED"
 			default:
 				t.Fatalf("Unexpected client request at line %d: %s", line.lineno, line.line)
-
 			}
 
 			return ""
@@ -560,7 +556,6 @@ func TestConn(t *testing.T) {
 					return "NOT_FOUND"
 				default:
 					t.Fatalf("Unexpected client request at line %d: %s", line.lineno, line.line)
-
 				}
 
 				return ""
@@ -583,7 +578,6 @@ func TestConn(t *testing.T) {
 				return "WATCHING 2"
 			default:
 				t.Fatalf("Unexpected client request at line %d: %s", line.lineno, line.line)
-
 			}
 
 			return ""
