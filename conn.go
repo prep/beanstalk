@@ -152,7 +152,7 @@ func (conn *Conn) command(ctx context.Context, format string, params ...interfac
 
 			return 0, body, nil
 
-		case "RESERVED":
+		case "FOUND", "RESERVED":
 			if len(parts) != 3 {
 				return 0, nil, ErrUnexpected
 			}
@@ -171,6 +171,18 @@ func (conn *Conn) command(ctx context.Context, format string, params ...interfac
 			}
 
 			return id, body[:size], nil
+
+		case "KICKED":
+			if len(parts) != 2 {
+				return 0, nil, ErrUnexpected
+			}
+
+			count, err := strconv.ParseUint(parts[1], 10, 64)
+			if err != nil {
+				return 0, nil, err
+			}
+
+			return count, nil, nil
 
 		case "DELETED", "RELEASED", "TOUCHED", "USING", "WATCHING":
 			return 0, nil, nil
@@ -233,6 +245,61 @@ func (conn *Conn) Ignore(ctx context.Context, tube string) error {
 	return err
 }
 
+// Kick one or more jobs in the specified tube. This function returns the
+// number of jobs that were kicked.
+func (conn *Conn) Kick(ctx context.Context, tube string, bound int) (int64, error) {
+	conn.mu.Lock()
+	defer conn.mu.Unlock()
+
+	// If the tube is different than the last time, switch tubes.
+	if tube != conn.lastTube {
+		if _, _, err := conn.command(ctx, "use %s", tube); err != nil {
+			return 0, err
+		}
+
+		conn.lastTube = tube
+	}
+
+	count, _, err := conn.command(ctx, "kick %d", bound)
+	if err != nil {
+		return 0, err
+	}
+
+	return int64(count), nil
+}
+
+// PeekBuried peeks at a buried job on the specified tube and returns the
+// job. If there are no jobs to peek at, this function will return without a
+// job or error.
+func (conn *Conn) PeekBuried(ctx context.Context, tube string) (*Job, error) {
+	conn.mu.Lock()
+	defer conn.mu.Unlock()
+
+	// If the tube is different than the last time, switch tubes.
+	if tube != conn.lastTube {
+		if _, _, err := conn.command(ctx, "use %s", tube); err != nil {
+			return nil, err
+		}
+
+		conn.lastTube = tube
+	}
+
+	id, body, err := conn.command(ctx, "peek-buried")
+	switch {
+	case err == ErrNotFound:
+		return nil, nil
+	case err != nil:
+		return nil, err
+	}
+
+	job := &Job{ID: id, Body: body, conn: conn}
+	if err = conn.statsJob(ctx, job); err != nil {
+		return nil, err
+	}
+
+	return job, nil
+}
+
 // Put a job in the specified tube.
 func (conn *Conn) Put(ctx context.Context, tube string, body []byte, params PutParams) (uint64, error) {
 	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/Conn.Put")
@@ -291,19 +358,28 @@ func (conn *Conn) ReserveWithTimeout(ctx context.Context, timeout time.Duration)
 	// on the connection. If it's the former, the TTR was probably very short and
 	// the connection very slow.
 	// Either way, the job that was reserved is already lost.
-	if _, body, err = conn.command(ctx, "stats-job %d", job.ID); err != nil {
-		if err == ErrNotFound {
-			return nil, nil
-		}
-
+	err = conn.statsJob(ctx, job)
+	switch {
+	case err == ErrNotFound:
+		return nil, nil
+	case err != nil:
 		return nil, err
+	}
+
+	return job, nil
+}
+
+func (conn *Conn) statsJob(ctx context.Context, job *Job) error {
+	_, body, err := conn.command(ctx, "stats-job %d", job.ID)
+	if err != nil {
+		return err
 	}
 
 	// If the job stats are unmarshallable, return the error and expect the caller
 	// to close the connection which takes care of the job's reservation.
 	// However, in case the caller doesn't and still wants the job, return it anyway.
-	if err := yaml.Unmarshal(body, &job.Stats); err != nil {
-		return job, err
+	if err = yaml.Unmarshal(body, &job.Stats); err != nil {
+		return err
 	}
 
 	job.Stats.Age *= time.Second
@@ -311,7 +387,7 @@ func (conn *Conn) ReserveWithTimeout(ctx context.Context, timeout time.Duration)
 	job.Stats.TTR *= time.Second
 	job.Stats.TimeLeft *= time.Second
 
-	return job, nil
+	return nil
 }
 
 // touch the job thereby resetting its reserved status.

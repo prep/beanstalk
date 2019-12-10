@@ -93,5 +93,10 @@ func (job *Job) Touch(ctx context.Context) error {
 // TouchAfter returns the duration until this jobs needs to be touched for its
 // reservation to be retained.
 func (job *Job) TouchAfter() time.Duration {
+	// ReservedAt is not set for jobs that are peeked.
+	if job.ReservedAt.IsZero() {
+		return 0
+	}
+
 	return time.Until(job.ReservedAt.Add(job.Stats.TimeLeft))
 }
