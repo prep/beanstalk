@@ -10,6 +10,10 @@ import (
 // A Config structure is used to configure a Consumer, Producer, one of its
 // pools or Conn.
 type Config struct {
+	// ConnTimeout configures the read and write timeout of the connection. This
+	// can be overridden by a context deadline if its value is lower.
+	// The default is to have no timeout.
+	ConnTimeout time.Duration
 	// NumGoroutines is the number of goroutines that the Receive() method will
 	// spin up.
 	// The default is to spin up 1 goroutine.
