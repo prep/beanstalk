@@ -111,21 +111,19 @@ func (consumer *Consumer) setupConnection(conn *Conn, config Config) error {
 		return nil
 	}
 
-	return contextTimeoutFunc(3*time.Second, func(ctx context.Context) error {
-		for _, tube := range consumer.tubes {
-			if err := conn.Watch(ctx, tube); err != nil {
-				return fmt.Errorf("error watching tube: %s: %s", tube, err)
-			}
+	for _, tube := range consumer.tubes {
+		if err := conn.Watch(context.Background(), tube); err != nil {
+			return fmt.Errorf("error watching tube: %s: %s", tube, err)
 		}
+	}
 
-		if !includes(consumer.tubes, "default") {
-			if err := conn.Ignore(ctx, "default"); err != nil {
-				return fmt.Errorf("error ignoring default tube: %s", err)
-			}
+	if !includes(consumer.tubes, "default") {
+		if err := conn.Ignore(context.Background(), "default"); err != nil {
+			return fmt.Errorf("error ignoring default tube: %s", err)
 		}
+	}
 
-		return nil
-	})
+	return nil
 }
 
 // handleIO is responsible for reserving jobs on the connection and offering
@@ -153,10 +151,9 @@ func (consumer *Consumer) handleIO(conn *Conn, config Config) (err error) {
 		}
 
 		releaseTimeout.Stop()
-		err = contextTimeoutFunc(3*time.Second, job.Release)
 
 		// Don't treat NOT_FOUND responses as a fatal error.
-		if err == ErrNotFound {
+		if err = job.Release(context.Background()); err == ErrNotFound {
 			config.ErrorLog.Printf("Consumer could not release job %d: %s", job.ID, err)
 			err = nil
 		}
@@ -174,11 +171,7 @@ func (consumer *Consumer) handleIO(conn *Conn, config Config) (err error) {
 		}
 
 		// Attempt to reserve a job.
-		err = contextTimeoutFunc(3*time.Second, func(ctx context.Context) error {
-			job, err = conn.ReserveWithTimeout(ctx, 0)
-			return err
-		})
-
+		job, err = conn.ReserveWithTimeout(context.Background(), 0)
 		switch {
 		case err != nil:
 			return err

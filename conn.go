@@ -82,10 +82,30 @@ func (conn *Conn) String() string {
 	return conn.URI + " (local=" + conn.conn.LocalAddr().String() + ")"
 }
 
+// deadline returns the deadline of a single request and response.
+func (conn *Conn) deadline(ctx context.Context) time.Time {
+	deadline, ok := ctx.Deadline()
+
+	// If no connection timeout has been configured, simply return the context
+	// deadline which could be set or not.
+	if conn.config.ConnTimeout == 0 {
+		return deadline
+	}
+
+	// If no context deadline was set or if the configured connection timeout
+	// will hit sooner, return the connection timeout.
+	timeout := time.Now().Add(conn.config.ConnTimeout)
+	if !ok || timeout.Before(deadline) {
+		return timeout
+	}
+
+	return deadline
+}
+
 func (conn *Conn) command(ctx context.Context, format string, params ...interface{}) (uint64, []byte, error) {
 	// Write a command and read the response.
 	id, body, err := func() (uint64, []byte, error) {
-		if deadline, ok := ctx.Deadline(); ok {
+		if deadline := conn.deadline(ctx); !deadline.IsZero() {
 			if err := conn.conn.SetDeadline(deadline); err != nil {
 				return 0, nil, err
 			}

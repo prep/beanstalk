@@ -229,7 +229,6 @@ func TestConn(t *testing.T) {
 			server.HandleFunc(func(line Line) string {
 				if line.At(1, "ignore bar") {
 					return "NOT_IGNORED"
-
 				}
 
 				t.Fatalf("Unexpected client request: %s", line.line)
@@ -396,7 +395,6 @@ func TestConn(t *testing.T) {
 				return "OK 166\r\n---\r\nid: 12\r\ntube: default\r\nstate: reserved\r\npri: 512\r\nage: 23\r\ndelay: 15\r\nttr: 30\r\ntime-left: 25\r\nfile: 6\r\nreserves: 1\r\ntimeouts: 4\r\nreleases: 5\r\nburies: 2\r\nkicks: 7"
 			default:
 				t.Fatalf("Unexpected client request at line %d: %s", line.lineno, line.line)
-
 			}
 
 			return ""
@@ -506,7 +504,6 @@ func TestConn(t *testing.T) {
 					return "NOT_FOUND"
 				default:
 					t.Fatalf("Unexpected client request at line %d: %s", line.lineno, line.line)
-
 				}
 
 				return ""
@@ -531,7 +528,6 @@ func TestConn(t *testing.T) {
 				return "TOUCHED"
 			default:
 				t.Fatalf("Unexpected client request at line %d: %s", line.lineno, line.line)
-
 			}
 
 			return ""
@@ -560,7 +556,6 @@ func TestConn(t *testing.T) {
 					return "NOT_FOUND"
 				default:
 					t.Fatalf("Unexpected client request at line %d: %s", line.lineno, line.line)
-
 				}
 
 				return ""
@@ -583,7 +578,6 @@ func TestConn(t *testing.T) {
 				return "WATCHING 2"
 			default:
 				t.Fatalf("Unexpected client request at line %d: %s", line.lineno, line.line)
-
 			}
 
 			return ""
@@ -607,4 +601,89 @@ func TestConn(t *testing.T) {
 			}
 		})
 	})
+}
+
+func TestDeadline(t *testing.T) {
+	conn := &Conn{}
+
+	testCases := []struct {
+		Name           string
+		ConnTimeout    time.Duration
+		ContextTimeout time.Duration
+	}{
+		{
+			Name: "WithoutAnyTimeoutOrContext",
+		},
+		{
+			Name:        "WithTimeout",
+			ConnTimeout: 5 * time.Second,
+		},
+		{
+			Name:           "WithContext",
+			ContextTimeout: 5 * time.Second,
+		},
+		{
+			Name:           "WithSoonerTimeout",
+			ConnTimeout:    3 * time.Second,
+			ContextTimeout: 5 * time.Second,
+		},
+		{
+			Name:           "WithSoonerContext",
+			ConnTimeout:    5 * time.Second,
+			ContextTimeout: 3 * time.Second,
+		},
+	}
+
+	for i, testCase := range testCases {
+		t.Run(testCase.Name, func(t *testing.T) {
+			conn.config.ConnTimeout = testCase.ConnTimeout
+
+			// Create a context which might be a context with a timeout.
+			ctx := context.Background()
+			if testCase.ContextTimeout != 0 {
+				var cancel func()
+				ctx, cancel = context.WithTimeout(ctx, testCase.ContextTimeout)
+				defer cancel()
+			}
+
+			// Determine the expected value.
+			expect := func() time.Duration {
+				switch {
+				// If both are set, pick the one with the lowest value.
+				case testCase.ConnTimeout != 0 && testCase.ContextTimeout != 0:
+					if testCase.ConnTimeout < testCase.ContextTimeout {
+						return testCase.ConnTimeout
+					}
+					return testCase.ContextTimeout
+
+				// If only one is set and timeout is not 0, use that.
+				case testCase.ConnTimeout != 0:
+					return testCase.ConnTimeout
+
+				// Otherwise, use the context which could be either set or not.
+				default:
+					return testCase.ContextTimeout
+				}
+			}()
+
+			// Mark the expected deadline, which should be very close to the
+			// returned deadline.
+			mark := time.Now().Add(expect)
+
+			deadline := conn.deadline(ctx)
+			switch {
+			// Validate if the deadline is zero.
+			case expect == 0:
+				if !deadline.IsZero() {
+					t.Fatalf("Expected testcase %d to have no deadline, but got %s", i, deadline)
+				}
+
+			// Validate if the deadline is within a reasonable range.
+			case !mark.Add(-50 * time.Millisecond).Before(deadline):
+				t.Fatalf("Expected testcase %d deadline to be around %s", i, expect)
+			case !mark.Add(50 * time.Millisecond).After(deadline):
+				t.Fatalf("Expected testcase %d deadline to be around %s", i, expect)
+			}
+		})
+	}
 }
