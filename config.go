@@ -14,6 +14,11 @@ type Config struct {
 	// can be overridden by a context deadline if its value is lower.
 	// The default is to have no timeout.
 	ConnTimeout time.Duration
+	// Multiply the list of URIs specified to any producer pool or consumer pool.
+	// The effect of this is more TCP connections being set up to load balance
+	// traffic over.
+	// The default is to have 1.
+	Multiply int
 	// NumGoroutines is the number of goroutines that the Receive() method will
 	// spin up.
 	// The default is to spin up 1 goroutine.
@@ -41,6 +46,9 @@ type Config struct {
 }
 
 func (config Config) normalize() Config {
+	if config.Multiply < 1 {
+		config.Multiply = 1
+	}
 	if config.NumGoroutines < 1 {
 		config.NumGoroutines = 1
 	}
