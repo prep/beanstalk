@@ -268,6 +268,55 @@ func (conn *Conn) Kick(ctx context.Context, tube string, bound int) (int64, erro
 	return int64(count), nil
 }
 
+// ListTubes returns a list of available tubes.
+func (conn *Conn) ListTubes(ctx context.Context) ([]string, error) {
+	_, body, err := conn.lcommand(ctx, "list-tubes")
+	if err != nil {
+		return nil, err
+	}
+
+	var tubes []string
+	if err = yaml.Unmarshal(body, &tubes); err != nil {
+		return nil, err
+	}
+
+	return tubes, nil
+}
+
+type TubeStats struct {
+	Name            string        `yaml:"name"`
+	UrgentJobs      int64         `yaml:"current-jobs-urgent"`
+	ReadyJobs       int64         `yaml:"current-jobs-ready"`
+	ReservedJobs    int64         `yaml:"current-jobs-reserved"`
+	DelayedJobs     int64         `yaml:"current-jobs-delayed"`
+	BuriedJobs      int64         `yaml:"current-jobs-buried"`
+	TotalJobs       int64         `yaml:"total-jobs"`
+	CurrentUsing    int64         `yaml:"current-using"`
+	CurrentWatching int64         `yaml:"current-watching"`
+	CurrentWaiting  int64         `yaml:"current-waiting"`
+	Deletes         int64         `yaml:"cmd-delete"`
+	Pauses          int64         `yaml:"cmd-pause-tube"`
+	Pause           time.Duration `yaml:"pause"`
+	PauseLeft       time.Duration `yaml:"pause-time-left"`
+}
+
+func (conn *Conn) StatsTube(ctx context.Context, tube string) (TubeStats, error) {
+	_, body, err := conn.lcommand(ctx, "stats-tube %s", tube)
+	if err != nil {
+		return TubeStats{}, err
+	}
+
+	var stats TubeStats
+	if err = yaml.Unmarshal(body, &stats); err != nil {
+		return TubeStats{}, err
+	}
+
+	stats.Pause *= time.Second
+	stats.PauseLeft *= time.Second
+
+	return stats, nil
+}
+
 // PeekBuried peeks at a buried job on the specified tube and returns the
 // job. If there are no jobs to peek at, this function will return without a
 // job or error.
