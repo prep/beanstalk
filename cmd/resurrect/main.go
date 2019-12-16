@@ -13,7 +13,7 @@ import (
 
 var (
 	help = flag.Bool("help", false, "Display usage information")
-	tube = flag.String("tube", "", "The tube to operate on. The default is all tubes")
+	tube = flag.String("tube", "", "The tube to operate on (default is all tubes)")
 	uri  = flag.String("uri", "beanstalk://localhost:11300", "The URI of the beanstalk server")
 )
 
@@ -71,6 +71,7 @@ func main() {
 
 		fmt.Println("\nCommands:")
 		fmt.Println("  delete    Delete one or more buried jobs")
+		fmt.Println("  info      Display information on tubes that contain buried jobs")
 		fmt.Println("  kick      Kick one or more jobs back to the ready queue")
 		fmt.Println("")
 	}
