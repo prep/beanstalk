@@ -68,3 +68,27 @@ func TestParseURI(t *testing.T) {
 		}
 	})
 }
+
+func TestMultiply(t *testing.T) {
+	list := multiply([]string{"a", "b", "c"}, 3)
+	if len(list) != 9 {
+		t.Fatalf("Expected 9 items in the list")
+	}
+
+	for i, item := range list {
+		switch i % 3 {
+		case 0:
+			if item != "a" {
+				t.Fatalf("Expected a for item %d", i)
+			}
+		case 1:
+			if item != "b" {
+				t.Fatalf("Expected b for item %d", i)
+			}
+		case 2:
+			if item != "c" {
+				t.Fatalf("Expected c for item %d", i)
+			}
+		}
+	}
+}
