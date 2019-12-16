@@ -132,3 +132,14 @@ func keepConnected(handler ioHandler, conn *Conn, config Config, close chan stru
 		}
 	}()
 }
+
+// multiply a slice by the specified amount. This is used to multiply the
+// number of TCP client connections.
+func multiply(list []string, multiply int) []string {
+	var results []string
+	for i := 0; i < multiply; i++ {
+		results = append(results, list...)
+	}
+
+	return results
+}

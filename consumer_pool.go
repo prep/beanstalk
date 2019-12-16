@@ -24,7 +24,7 @@ func NewConsumerPool(uris []string, tubes []string, config Config) (*ConsumerPoo
 	config = config.normalize()
 
 	pool := &ConsumerPool{C: config.jobC, config: config, stop: make(chan struct{})}
-	for _, uri := range uris {
+	for _, uri := range multiply(uris, config.Multiply) {
 		consumer, err := NewConsumer(uri, tubes, config)
 		if err != nil {
 			pool.Stop()
