@@ -283,6 +283,7 @@ func (conn *Conn) ListTubes(ctx context.Context) ([]string, error) {
 	return tubes, nil
 }
 
+// TubeStats describe the statistics of a beanstalk tube.
 type TubeStats struct {
 	Name            string        `yaml:"name"`
 	UrgentJobs      int64         `yaml:"current-jobs-urgent"`
@@ -300,7 +301,8 @@ type TubeStats struct {
 	PauseLeft       time.Duration `yaml:"pause-time-left"`
 }
 
-func (conn *Conn) StatsTube(ctx context.Context, tube string) (TubeStats, error) {
+// TubeStats return the statistics of the specified tube.
+func (conn *Conn) TubeStats(ctx context.Context, tube string) (TubeStats, error) {
 	_, body, err := conn.lcommand(ctx, "stats-tube %s", tube)
 	if err != nil {
 		return TubeStats{}, err
