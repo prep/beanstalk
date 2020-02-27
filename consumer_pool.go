@@ -2,6 +2,7 @@ package beanstalk
 
 import (
 	"context"
+	"errors"
 	"sync"
 )
 
@@ -25,13 +26,15 @@ func NewConsumerPool(uris []string, tubes []string, config Config) (*ConsumerPoo
 
 	pool := &ConsumerPool{C: config.jobC, config: config, stop: make(chan struct{})}
 	for _, uri := range multiply(uris, config.Multiply) {
+		// Silently ignoring unsuccessful connections
 		consumer, err := NewConsumer(uri, tubes, config)
-		if err != nil {
-			pool.Stop()
-			return nil, err
+		if err == nil {
+			pool.consumers = append(pool.consumers, consumer)
 		}
-
-		pool.consumers = append(pool.consumers, consumer)
+	}
+	if len(pool.consumers) == 0 {
+		pool.Stop()
+		return nil, errors.New("no valid consumers")
 	}
 
 	return pool, nil
