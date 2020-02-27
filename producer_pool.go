@@ -2,6 +2,7 @@ package beanstalk
 
 import (
 	"context"
+	"errors"
 	"math/rand"
 	"sync"
 
@@ -24,13 +25,15 @@ func NewProducerPool(uris []string, config Config) (*ProducerPool, error) {
 
 	pool := &ProducerPool{config: config}
 	for _, URI := range multiply(uris, config.Multiply) {
+		// Silently ignoring unsuccessful connections
 		producer, err := NewProducer(URI, config)
-		if err != nil {
-			pool.Stop()
-			return nil, err
+		if err == nil {
+			pool.producers = append(pool.producers, producer)
 		}
-
-		pool.producers = append(pool.producers, producer)
+	}
+	if len(pool.producers) == 0 {
+		pool.Stop()
+		return nil, errors.New("no available servers")
 	}
 
 	return pool, nil
