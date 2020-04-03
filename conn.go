@@ -380,6 +380,14 @@ func (conn *Conn) release(ctx context.Context, job *Job, priority uint32, delay 
 	return err
 }
 
+// Reserve tries to reserve a job and block until it found one.
+func (conn *Conn) Reserve(ctx context.Context) (*Job, error) {
+	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/Conn.Reserve")
+	defer span.End()
+
+	return conn.reserve(ctx, "reserve")
+}
+
 // ReserveWithTimeout tries to reserve a job and block for up to a maximum of
 // timeout. If no job could be reserved, this function will return without a
 // job or error.
@@ -387,10 +395,15 @@ func (conn *Conn) ReserveWithTimeout(ctx context.Context, timeout time.Duration)
 	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/Conn.ReserveWithTimeout")
 	defer span.End()
 
+	return conn.reserve(ctx, "reserve-with-timeout %d", timeout/time.Second)
+}
+
+// reserve a job.
+func (conn *Conn) reserve(ctx context.Context, format string, params ...interface{}) (*Job, error) {
 	conn.mu.Lock()
 	defer conn.mu.Unlock()
 
-	id, body, err := conn.command(ctx, "reserve-with-timeout %d", timeout/time.Second)
+	id, body, err := conn.command(ctx, format, params...)
 	switch {
 	case err == ErrDeadlineSoon:
 		return nil, nil
