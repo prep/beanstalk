@@ -390,7 +390,6 @@ func (conn *Conn) ReserveWithTimeout(ctx context.Context, timeout time.Duration)
 	conn.mu.Lock()
 	defer conn.mu.Unlock()
 
-	reservedAt := time.Now()
 	id, body, err := conn.command(ctx, "reserve-with-timeout %d", timeout/time.Second)
 	switch {
 	case err == ErrDeadlineSoon:
@@ -403,7 +402,7 @@ func (conn *Conn) ReserveWithTimeout(ctx context.Context, timeout time.Duration)
 		return nil, err
 	}
 
-	job := &Job{ID: id, Body: body, ReservedAt: reservedAt, conn: conn}
+	job := &Job{ID: id, Body: body, ReservedAt: time.Now(), conn: conn}
 
 	// If this command errors out, it's either a NOT_FOUND response or an error
 	// on the connection. If it's the former, the TTR was probably very short and
