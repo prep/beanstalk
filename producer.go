@@ -29,7 +29,6 @@ func NewProducer(uri string, config Config) (*Producer, error) {
 	config = config.normalize()
 	go func() {
 		maintainConn(ctx, uri, config, connHandler{
-			setup:  producer.setupConnection,
 			handle: producer.setConnection,
 		})
 	}()
@@ -40,10 +39,6 @@ func NewProducer(uri string, config Config) (*Producer, error) {
 // Close this consumer's connection.
 func (producer *Producer) Close() {
 	producer.cancel()
-}
-
-func (producer *Producer) setupConnection(_ context.Context, _ *Conn) error {
-	return nil
 }
 
 func (producer *Producer) setConnection(ctx context.Context, conn *Conn) error {
