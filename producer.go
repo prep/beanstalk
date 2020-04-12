@@ -7,6 +7,7 @@ import (
 	"go.opencensus.io/trace"
 )
 
+// Producer
 type Producer struct {
 	cancel func()
 	conn   *Conn

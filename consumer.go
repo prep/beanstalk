@@ -7,6 +7,8 @@ import (
 	"time"
 )
 
+// Consumer maintains a pool of connections to beanstalk servers on which it
+// reserves jobs.
 type Consumer struct {
 	uris     []string
 	tubes    []string
@@ -53,6 +55,8 @@ func (consumer *Consumer) Receive(ctx context.Context, fn func(ctx context.Conte
 	consumer.wg.Wait()
 }
 
+// worker issues async reserve requests and when successful, calls fn with the
+// reserved job.
 func (consumer *Consumer) worker(ctx context.Context, fn func(ctx context.Context, job *Job)) {
 	jobC := make(chan *Job)
 
@@ -75,7 +79,7 @@ func (consumer *Consumer) worker(ctx context.Context, fn func(ctx context.Contex
 	}
 }
 
-// watchTubes makes sure the appropriate tubes are being watched.
+// watchTubes watches the requested tubes.
 func (consumer *Consumer) watchTubes(ctx context.Context, conn *Conn) error {
 	if len(consumer.tubes) == 0 {
 		return nil
