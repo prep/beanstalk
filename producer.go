@@ -25,13 +25,10 @@ func NewProducer(uri string, config Config) (*Producer, error) {
 		errC:   make(chan error, 1),
 	}
 
-	// Spin up connections to the beanstalk servers.
-	config = config.normalize()
-	go func() {
-		maintainConn(ctx, uri, config, connHandler{
-			handle: producer.setConnection,
-		})
-	}()
+	// Spin up the connection to the beanstalk server.
+	go maintainConn(ctx, uri, config.normalize(), connHandler{
+		handle: producer.setConnection,
+	})
 
 	return producer, nil
 }

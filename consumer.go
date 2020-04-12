@@ -33,12 +33,10 @@ func NewConsumer(uris []string, tubes []string, config Config) (*Consumer, error
 func (consumer *Consumer) Receive(ctx context.Context, fn func(ctx context.Context, job *Job)) {
 	// Spin up the connections to the beanstalk servers.
 	for _, uri := range multiply(consumer.uris, consumer.config.Multiply) {
-		go func(uri string) {
-			maintainConn(ctx, uri, consumer.config, connHandler{
-				setup:  consumer.watchTubes,
-				handle: consumer.reserveJobs,
-			})
-		}(uri)
+		go maintainConn(ctx, uri, consumer.config, connHandler{
+			setup:  consumer.watchTubes,
+			handle: consumer.reserveJobs,
+		})
 	}
 
 	// Spin up the goroutines that pass reserved jobs to fn.
