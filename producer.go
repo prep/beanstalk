@@ -58,6 +58,7 @@ func (producer *Producer) setConnection(ctx context.Context, conn *Conn) error {
 	}
 }
 
+// IsConnected returns true if this producer is connected.
 func (producer *Producer) IsConnected() bool {
 	producer.mu.RLock()
 	defer producer.mu.RUnlock()
