@@ -60,6 +60,7 @@ func ParseURI(uri string) (string, bool, error) {
 	return host, isTLS, nil
 }
 
+// includes returns true if s is contained in a.
 func includes(a []string, s string) bool {
 	for _, e := range a {
 		if e == s {
@@ -70,6 +71,7 @@ func includes(a []string, s string) bool {
 	return false
 }
 
+// validURis returns an error if any of the specified URIs is invalid.
 func validURIs(uris []string) error {
 	if len(uris) == 0 {
 		return errors.New("no URIs specified")
@@ -89,10 +91,12 @@ type connHandler struct {
 	// the consumer to watch the proper tubes.
 	setup func(context.Context, *Conn) error
 	// handle the connection after the setup has been done. This method returns
-	// on connection error or when
+	// on connection error or when the context is cancelled.
 	handle func(context.Context, *Conn) error
 }
 
+// maintainConn is responsible for maintaining a connection to a beanstalk
+// server on behalf of a producer or consumer.
 func maintainConn(ctx context.Context, uri string, config Config, handler connHandler) {
 	var conn *Conn
 	var err error
