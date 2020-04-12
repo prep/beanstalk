@@ -27,8 +27,8 @@ func NewProducerPool(uris []string, config Config) (*ProducerPool, error) {
 	config = config.normalize()
 
 	pool := &ProducerPool{config: config}
-	for _, URI := range multiply(uris, config.Multiply) {
-		producer, err := NewProducer(URI, config)
+	for _, uri := range multiply(uris, config.Multiply) {
+		producer, err := NewProducer(uri, config)
 		if err != nil {
 			return nil, err
 		}
