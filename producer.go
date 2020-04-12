@@ -7,49 +7,46 @@ import (
 	"go.opencensus.io/trace"
 )
 
-// Producer manages a connection for the purpose of inserting jobs.
 type Producer struct {
-	conn      *Conn
-	errC      chan error
-	close     chan struct{}
-	closeOnce sync.Once
-	mu        sync.Mutex
+	cancel func()
+	conn   *Conn
+	errC   chan error
+	mu     sync.RWMutex
 }
 
-// NewProducer creates a connection to a beanstalk server, but will return an
-// error if the connection fails. Once established, the connection will be
-// maintained in the background.
 func NewProducer(uri string, config Config) (*Producer, error) {
-	config = config.normalize()
-
-	conn, err := Dial(uri, config)
-	if err != nil {
+	if err := validURIs([]string{uri}); err != nil {
 		return nil, err
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
 	producer := &Producer{
-		conn:  conn,
-		errC:  make(chan error, 1),
-		close: make(chan struct{}),
+		cancel: cancel,
+		errC:   make(chan error, 1),
 	}
 
-	keepConnected(producer, conn, config, producer.close)
+	// Spin up connections to the beanstalk servers.
+	config = config.normalize()
+	go func() {
+		maintainConn(ctx, uri, config, connHandler{
+			setup:  producer.setupConnection,
+			handle: producer.setConnection,
+		})
+	}()
+
 	return producer, nil
 }
 
 // Close this consumer's connection.
 func (producer *Producer) Close() {
-	producer.closeOnce.Do(func() {
-		close(producer.close)
-	})
+	producer.cancel()
 }
 
-func (producer *Producer) setupConnection(conn *Conn, config Config) error {
+func (producer *Producer) setupConnection(_ context.Context, _ *Conn) error {
 	return nil
 }
 
-// handleIO takes jobs offered up on C and inserts them into beanstalk.
-func (producer *Producer) handleIO(conn *Conn, config Config) error {
+func (producer *Producer) setConnection(ctx context.Context, conn *Conn) error {
 	producer.mu.Lock()
 	producer.conn = conn
 	producer.mu.Unlock()
@@ -60,13 +57,20 @@ func (producer *Producer) handleIO(conn *Conn, config Config) error {
 		return err
 
 	// Exit when this producer is closing down.
-	case <-producer.close:
+	case <-ctx.Done():
 		producer.mu.Lock()
 		producer.conn = nil
 		producer.mu.Unlock()
 
 		return nil
 	}
+}
+
+func (producer *Producer) IsConnected() bool {
+	producer.mu.RLock()
+	defer producer.mu.RUnlock()
+
+	return (producer.conn != nil)
 }
 
 // Put inserts a job into beanstalk.
@@ -83,7 +87,7 @@ func (producer *Producer) Put(ctx context.Context, tube string, body []byte, par
 	}
 
 	// Insert the job. If this fails, mark the connection as disconnected and
-	// report the error to handleIO.
+	// report the error back to setConnection.
 	id, err := producer.conn.Put(ctx, tube, body, params)
 	if err != nil {
 		producer.conn = nil

@@ -2,7 +2,6 @@ package beanstalk
 
 import (
 	"context"
-	"errors"
 	"math/rand"
 	"sync"
 
@@ -21,19 +20,20 @@ type ProducerPool struct {
 // NewProducerPool creates a pool of Producers from the list of URIs that has
 // been provided.
 func NewProducerPool(uris []string, config Config) (*ProducerPool, error) {
+	if err := validURIs(uris); err != nil {
+		return nil, err
+	}
+
 	config = config.normalize()
 
 	pool := &ProducerPool{config: config}
 	for _, URI := range multiply(uris, config.Multiply) {
-		// Silently ignoring unsuccessful connections
 		producer, err := NewProducer(URI, config)
-		if err == nil {
-			pool.producers = append(pool.producers, producer)
+		if err != nil {
+			return nil, err
 		}
-	}
-	if len(pool.producers) == 0 {
-		pool.Stop()
-		return nil, errors.New("no available servers")
+
+		pool.producers = append(pool.producers, producer)
 	}
 
 	return pool, nil
@@ -54,6 +54,20 @@ func (pool *ProducerPool) Stop() {
 	})
 }
 
+// IsConnected returns true when at least one producer in the pool is connected.
+func (pool *ProducerPool) IsConnected() bool {
+	pool.mu.RLock()
+	defer pool.mu.RUnlock()
+
+	for _, producer := range pool.producers {
+		if producer.IsConnected() {
+			return true
+		}
+	}
+
+	return false
+}
+
 // Put a job into the specified tube.
 func (pool *ProducerPool) Put(ctx context.Context, tube string, body []byte, params PutParams) (uint64, error) {
 	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/ProducerPool.Put")
@@ -65,13 +79,7 @@ func (pool *ProducerPool) Put(ctx context.Context, tube string, body []byte, par
 	// Cycle randomly over the producers.
 	for _, num := range rand.Perm(len(pool.producers)) {
 		id, err := pool.producers[num].Put(ctx, tube, body, params)
-		switch {
-		// If a producer is disconnected, try the next one.
-		case err == ErrDisconnected:
-			continue
-		// If a producer returns any other error, log it and try the next one.
-		case err != nil:
-			pool.config.ErrorLog.Printf("ProducerPool could not put job: %s", err)
+		if err != nil {
 			continue
 		}
 

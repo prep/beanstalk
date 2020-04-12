@@ -96,8 +96,12 @@ func main() {
 	}
 
 	config := beanstalk.Config{
-		ErrorLog: log.New(os.Stderr, "ERROR: ", log.LstdFlags),
-		InfoLog:  log.New(os.Stdout, "INFO: ", log.LstdFlags),
+		ErrorFunc: func(err error, message string) {
+			log.Printf("ERROR: %s: %s", message, err)
+		},
+		InfoFunc: func(message string) {
+			log.Printf("INFO: %s", message)
+		},
 	}
 
 	// Create a connection to the beanstalk server.
