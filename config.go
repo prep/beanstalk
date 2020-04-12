@@ -8,11 +8,7 @@ import (
 // A Config structure is used to configure a Consumer, Producer, one of its
 // pools or Conn.
 type Config struct {
-	// ConnTimeout configures the read and write timeout of the connection. This
-	// can be overridden by a context deadline if its value is lower.
-	// The default is to have no timeout.
-	ConnTimeout time.Duration
-	// Multiply the list of URIs specified to any producer pool or consumer pool.
+	// Multiply the list of URIs specified to the producer pool or consumer.
 	// The effect of this is more TCP connections being set up to load balance
 	// traffic over.
 	// The default is to have 1.
@@ -21,6 +17,12 @@ type Config struct {
 	// spin up.
 	// The default is to spin up 1 goroutine.
 	NumGoroutines int
+	// ConnTimeout configures the read and write timeout of the connection. This
+	// can be overridden by a context deadline if its value is lower.
+	// Note that this does not work with Reserve and might interfere with
+	// ReserveWithTimeout if configured incorrectly.
+	// The default is to have no timeout.
+	ConnTimeout time.Duration
 	// ReserveTimeout is the time a consumer should wait before reserving a job,
 	// when the last attempt didn't yield a job.
 	// The default is to wait 1 seconds.
@@ -44,13 +46,15 @@ func (config Config) normalize() Config {
 	if config.NumGoroutines < 1 {
 		config.NumGoroutines = 1
 	}
+	if config.ConnTimeout < 0 {
+		config.ConnTimeout = 0
+	}
 	if config.ReserveTimeout <= 0 {
 		config.ReserveTimeout = 1 * time.Second
 	}
 	if config.ReconnectTimeout <= 0 {
 		config.ReconnectTimeout = 3 * time.Second
 	}
-
 	if config.InfoFunc == nil {
 		config.InfoFunc = func(string) {}
 	}
