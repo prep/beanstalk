@@ -105,6 +105,7 @@ func (conn *Conn) deadline(ctx context.Context) time.Time {
 func (conn *Conn) command(ctx context.Context, format string, params ...interface{}) (uint64, []byte, error) {
 	// Write a command and read the response.
 	id, body, err := func() (uint64, []byte, error) {
+		// Detect network problems early by setting a deadline.
 		if deadline := conn.deadline(ctx); !deadline.IsZero() {
 			if err := conn.conn.SetDeadline(deadline); err != nil {
 				return 0, nil, err
@@ -113,15 +114,18 @@ func (conn *Conn) command(ctx context.Context, format string, params ...interfac
 			defer conn.conn.SetDeadline(time.Time{})
 		}
 
+		// Write the command.
 		if err := conn.text.PrintfLine(format, params...); err != nil {
 			return 0, nil, err
 		}
 
+		// Read the response.
 		line, err := conn.text.ReadLine()
 		if err != nil {
 			return 0, nil, err
 		}
 
+		// Parse the response.
 		parts := strings.SplitN(line, " ", 3)
 		switch parts[0] {
 		case "INSERTED":
