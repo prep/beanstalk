@@ -49,30 +49,34 @@ func (consumer *Consumer) Receive(ctx context.Context, fn func(ctx context.Conte
 
 		go func() {
 			defer consumer.wg.Done()
-
-			jobC := make(chan *Job)
-			for {
-				// Add a reserve request to the reserve channel.
-				consumer.reserveC <- jobC
-
-				select {
-				// If a reserved job comes in, pass it to worker function.
-				case job := <-jobC:
-					func() {
-						defer job.Release(context.Background())
-						fn(context.Background(), job)
-					}()
-
-				// Stop if the context closes.
-				case <-ctx.Done():
-					return
-				}
-			}
+			consumer.worker(ctx, fn)
 		}()
 	}
 
 	// Wait for all the reserving goroutines to finish before returning.
 	consumer.wg.Wait()
+}
+
+func (consumer *Consumer) worker(ctx context.Context, fn func(ctx context.Context, job *Job)) {
+	jobC := make(chan *Job)
+
+	for {
+		// Add a reserve request to the reserve channel.
+		consumer.reserveC <- jobC
+
+		select {
+		// If a reserved job comes in, pass it to fn.
+		case job := <-jobC:
+			func() {
+				defer job.Release(context.Background())
+				fn(context.Background(), job)
+			}()
+
+		// Stop if the context closes.
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 // watchTubes makes sure the appropriate tubes are being watched.
@@ -98,15 +102,16 @@ func (consumer *Consumer) watchTubes(ctx context.Context, conn *Conn) error {
 	return nil
 }
 
-// reserveJobs reserves jobs and passes them to fn.
+// reserveJobs is responsible for reserving jobs on demand and pass them back
+// to the goroutine in Receive that will call its fn with it.
 func (consumer *Consumer) reserveJobs(ctx context.Context, conn *Conn) error {
 	var jobC chan *Job
 
 	for {
-		// Wait for a reserve request to come in, or the context to cancel.
+		// Wait for a reserve request to come in. If the context is done, wait
+		// for the goroutines from Receive to finish before returning.
 		select {
 		case jobC = <-consumer.reserveC:
-		// Wait for all the goroutines in Receive to finish before returning.
 		case <-ctx.Done():
 			consumer.wg.Wait()
 			return nil
@@ -114,23 +119,23 @@ func (consumer *Consumer) reserveJobs(ctx context.Context, conn *Conn) error {
 
 		// Attempt to reserve a job.
 		job, err := conn.ReserveWithTimeout(ctx, 0)
-		switch {
-		// Stop on error.
-		case err != nil:
-			return err
-		// Return the reserved job to the goroutine in Receive.
-		case job != nil:
+		if job != nil {
 			jobC <- job
 			continue
-		// Put the request back on the queue.
-		default:
-			consumer.reserveC <- jobC
 		}
 
-		// No job was reserved, so wait a bit before trying to reserve again.
+		// Put the reserve request back onto the queue and return if an error
+		// occurred.
+		consumer.reserveC <- jobC
+		if err != nil {
+			return err
+		}
+
+		// No job reserved and no error, so wait a bit before trying to reserve
+		// again. If the context is done, wait for the goroutines from Receive
+		// to finish before returning.
 		select {
 		case <-time.After(consumer.config.ReserveTimeout):
-		// Wait for all the goroutines in Receive to finish before returning.
 		case <-ctx.Done():
 			consumer.wg.Wait()
 			return nil
