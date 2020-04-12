@@ -119,7 +119,7 @@ func maintainConn(ctx context.Context, uri string, config Config, handler connHa
 		// Set up the connection before really using it.
 		if handler.setup != nil {
 			if err = handler.setup(ctx, conn); err != nil {
-				config.ErrorFunc(err, fmt.Sprintf("Unable to set up the beanstalk connection"))
+				config.ErrorFunc(err, "Unable to set up the beanstalk connection")
 
 				_ = conn.Close()
 				select {
