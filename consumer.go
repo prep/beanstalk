@@ -31,16 +31,14 @@ func NewConsumer(uris []string, tubes []string, config Config) (*Consumer, error
 
 // Receive calls fn for each job it can reserve.
 func (consumer *Consumer) Receive(ctx context.Context, fn func(ctx context.Context, job *Job)) {
-	// Spin up connections to the beanstalk servers.
-	for i := 0; i < consumer.config.Multiply; i++ {
-		for _, uri := range consumer.uris {
-			go func(uri string) {
-				maintainConn(ctx, uri, consumer.config, connHandler{
-					setup:  consumer.watchTubes,
-					handle: consumer.reserveJobs,
-				})
-			}(uri)
-		}
+	// Spin up the connections to the beanstalk servers.
+	for _, uri := range multiply(consumer.uris, consumer.config.Multiply) {
+		go func(uri string) {
+			maintainConn(ctx, uri, consumer.config, connHandler{
+				setup:  consumer.watchTubes,
+				handle: consumer.reserveJobs,
+			})
+		}(uri)
 	}
 
 	// Spin up the goroutines that pass reserved jobs to fn.
