@@ -10,6 +10,7 @@ import (
 // Consumer maintains a pool of connections to beanstalk servers on which it
 // reserves jobs.
 type Consumer struct {
+	cancel   func()
 	uris     []string
 	tubes    []string
 	config   Config
@@ -41,7 +42,7 @@ func (consumer *Consumer) Receive(ctx context.Context, fn func(ctx context.Conte
 		})
 	}
 
-	// Spin up the goroutines that pass reserved jobs to fn.
+	// Spin up the worker goroutines that call fn for every reserved job.
 	for i := 0; i < consumer.config.NumGoroutines; i++ {
 		consumer.wg.Add(1)
 

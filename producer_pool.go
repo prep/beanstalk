@@ -8,30 +8,31 @@ import (
 	"go.opencensus.io/trace"
 )
 
-// ProducerPool manages a connection pool of Producers and provides a simple
-// interface for balancing Put requests over the pool of connections.
-type ProducerPool struct {
+// Producer maintains a pool of connections to beanstalk servers on which it
+// inserts jobs.
+type Producer struct {
+	cancel    func()
 	config    Config
-	producers []*Producer
-	stopOnce  sync.Once
+	producers []*producer
 	mu        sync.RWMutex
 }
 
-// NewProducerPool creates a pool of Producers from the list of URIs that has
-// been provided.
-func NewProducerPool(uris []string, config Config) (*ProducerPool, error) {
+// NewProducer returns a new Producer.
+func NewProducer(uris []string, config Config) (*Producer, error) {
 	if err := validURIs(uris); err != nil {
 		return nil, err
 	}
 
-	config = config.normalize()
+	// Create a context that can be cancelled to stop the producers.
+	ctx, cancel := context.WithCancel(context.Background())
 
-	pool := &ProducerPool{config: config}
-	for _, uri := range multiply(uris, config.Multiply) {
-		producer, err := NewProducer(uri, config)
-		if err != nil {
-			return nil, err
-		}
+	// Create the pool and spin up the producers.
+	pool := &Producer{cancel: cancel, config: config.normalize()}
+	for _, uri := range multiply(uris, pool.config.Multiply) {
+		producer := &producer{errC: make(chan error, 1)}
+		go maintainConn(ctx, uri, pool.config, connHandler{
+			handle: producer.setConnection,
+		})
 
 		pool.producers = append(pool.producers, producer)
 	}
@@ -39,28 +40,23 @@ func NewProducerPool(uris []string, config Config) (*ProducerPool, error) {
 	return pool, nil
 }
 
-// Stop all the producers in this pool.
-func (pool *ProducerPool) Stop() {
-	pool.stopOnce.Do(func() {
-		pool.mu.Lock()
-		defer pool.mu.Unlock()
+// Stop this producer.
+func (pool *Producer) Stop() {
+	pool.cancel()
 
-		for i, producer := range pool.producers {
-			producer.Close()
-			pool.producers[i] = nil
-		}
+	pool.mu.Lock()
+	defer pool.mu.Unlock()
 
-		pool.producers = []*Producer{}
-	})
+	pool.producers = []*producer{}
 }
 
 // IsConnected returns true when at least one producer in the pool is connected.
-func (pool *ProducerPool) IsConnected() bool {
+func (pool *Producer) IsConnected() bool {
 	pool.mu.RLock()
 	defer pool.mu.RUnlock()
 
 	for _, producer := range pool.producers {
-		if producer.IsConnected() {
+		if producer.isConnected() {
 			return true
 		}
 	}
@@ -69,8 +65,8 @@ func (pool *ProducerPool) IsConnected() bool {
 }
 
 // Put a job into the specified tube.
-func (pool *ProducerPool) Put(ctx context.Context, tube string, body []byte, params PutParams) (uint64, error) {
-	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/ProducerPool.Put")
+func (pool *Producer) Put(ctx context.Context, tube string, body []byte, params PutParams) (uint64, error) {
+	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/Producer.Put")
 	defer span.End()
 
 	pool.mu.RLock()
@@ -88,4 +84,62 @@ func (pool *ProducerPool) Put(ctx context.Context, tube string, body []byte, par
 
 	// If no producer was found, all were disconnected.
 	return 0, ErrDisconnected
+}
+
+type producer struct {
+	conn *Conn
+	errC chan error
+	mu   sync.RWMutex
+}
+
+func (producer *producer) setConnection(ctx context.Context, conn *Conn) error {
+	producer.mu.Lock()
+	producer.conn = conn
+	producer.mu.Unlock()
+
+	select {
+	// If an error occurred in Put, return it.
+	case err := <-producer.errC:
+		return err
+
+	// Exit when this producer is closing down.
+	case <-ctx.Done():
+		producer.mu.Lock()
+		producer.conn = nil
+		producer.mu.Unlock()
+
+		return nil
+	}
+}
+
+// isConnected returns true if this producer is connected.
+func (producer *producer) isConnected() bool {
+	producer.mu.RLock()
+	defer producer.mu.RUnlock()
+
+	return (producer.conn != nil)
+}
+
+// Put inserts a job into beanstalk.
+func (producer *producer) Put(ctx context.Context, tube string, body []byte, params PutParams) (uint64, error) {
+	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/producer.Put")
+	defer span.End()
+
+	producer.mu.Lock()
+	defer producer.mu.Unlock()
+
+	// If this producer isn't connected, return ErrDisconnected.
+	if producer.conn == nil {
+		return 0, ErrDisconnected
+	}
+
+	// Insert the job. If this fails, mark the connection as disconnected and
+	// report the error back to setConnection.
+	id, err := producer.conn.Put(ctx, tube, body, params)
+	if err != nil {
+		producer.conn = nil
+		producer.errC <- err
+	}
+
+	return id, err
 }

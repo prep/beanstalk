@@ -34,11 +34,11 @@ Create a Conn if you want the most basic version of a beanstalk client:
 		// handle error
 	}
 
-In most cases it is easier to leverage ConsumerPool and ProducerPool to manage
+In most cases it is easier to leverage ConsumerPool and Producer to manage
 one or more beanstalk client connections, as this provides some form of
 load balacning and auto-reconnect mechanisms under the hood.
 
-The ProducerPool manages one or more client connections used specifically for
+The Producer manages one or more client connections used specifically for
 producing beanstalk jobs. If exports a Put method that load balances between the
 available connections
 

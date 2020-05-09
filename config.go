@@ -5,29 +5,34 @@ import (
 	"time"
 )
 
-// A Config structure is used to configure a Consumer, Producer, one of its
-// pools or Conn.
+// Config is used to configure a Consumer, Producer or Conn.
 type Config struct {
-	// Multiply the list of URIs specified to the producer pool or consumer.
-	// The effect of this is more TCP connections being set up to load balance
+	// Multiply the list of URIs specified to the consumer or producer. The
+	// effect of this is more TCP connections being set up to load balance
 	// traffic over.
+	//
 	// The default is to have 1.
 	Multiply int
 	// NumGoroutines is the number of goroutines that the Receive() method will
 	// spin up.
-	// The default is to spin up 1 goroutine.
+	//
+	// The default is to spin up 10 goroutines.
 	NumGoroutines int
 	// ConnTimeout configures the read and write timeout of the connection. This
 	// can be overridden by a context deadline if its value is lower.
-	// Note that this does not work with Reserve and might interfere with
-	// ReserveWithTimeout if configured incorrectly.
+	//
+	// Note that this does not work with Reserve() and might interfere with
+	// ReserveWithTimeout() if configured incorrectly.
+	//
 	// The default is to have no timeout.
 	ConnTimeout time.Duration
 	// ReserveTimeout is the time a consumer should wait before reserving a job,
 	// when the last attempt didn't yield a job.
+	//
 	// The default is to wait 1 seconds.
 	ReserveTimeout time.Duration
 	// ReconnectTimeout is the timeout between reconnects.
+	//
 	// The default is to wait 3 seconds.
 	ReconnectTimeout time.Duration
 	// TLSConfig describes the configuration that is used when Dial() makes a
@@ -44,7 +49,7 @@ func (config Config) normalize() Config {
 		config.Multiply = 1
 	}
 	if config.NumGoroutines < 1 {
-		config.NumGoroutines = 1
+		config.NumGoroutines = 10
 	}
 	if config.ConnTimeout < 0 {
 		config.ConnTimeout = 0
