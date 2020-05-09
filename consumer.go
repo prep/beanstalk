@@ -10,7 +10,6 @@ import (
 // Consumer maintains a pool of connections to beanstalk servers on which it
 // reserves jobs.
 type Consumer struct {
-	cancel   func()
 	uris     []string
 	tubes    []string
 	config   Config

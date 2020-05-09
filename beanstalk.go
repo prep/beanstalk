@@ -96,7 +96,7 @@ type connHandler struct {
 }
 
 // maintainConn is responsible for maintaining a connection to a beanstalk
-// server on behalf of a producer or consumer.
+// server on behalf of a Consumer or Producer.
 func maintainConn(ctx context.Context, uri string, config Config, handler connHandler) {
 	var conn *Conn
 	var err error
