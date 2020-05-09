@@ -72,7 +72,7 @@ func (consumer *Consumer) worker(ctx context.Context, fn func(ctx context.Contex
 				fn(context.Background(), job)
 			}()
 
-		// Stop if the context closes.
+		// Stop if the context got cancelled.
 		case <-ctx.Done():
 			return
 		}
@@ -106,38 +106,54 @@ func (consumer *Consumer) watchTubes(ctx context.Context, conn *Conn) error {
 // to the goroutine in Receive that will call its fn with it.
 func (consumer *Consumer) reserveJobs(ctx context.Context, conn *Conn) error {
 	var jobC chan *Job
+	var job *Job
+	var err error
+
+	// If the return error is nil, then wait for the goroutines spun up by
+	// Receive to finish before returning. This is done because returning closes
+	// the TCP connection to the beanstalk server and there might be jobs left
+	// who need it to finish up.
+	defer func() {
+		if err == nil {
+			consumer.wg.Wait()
+		}
+	}()
 
 	for {
-		// Wait for a reserve request to come in. If the context is done, wait
-		// for the goroutines from Receive to finish before returning.
+		// Wait for a reserve request to come in.
 		select {
 		case jobC = <-consumer.reserveC:
 		case <-ctx.Done():
-			consumer.wg.Wait()
 			return nil
 		}
 
 		// Attempt to reserve a job.
-		job, err := conn.ReserveWithTimeout(ctx, 0)
-		if job != nil {
-			jobC <- job
-			continue
+		if job, err = conn.ReserveWithTimeout(ctx, 0); job != nil {
+			select {
+			// Return the job to the worker.
+			case jobC <- job:
+				continue
+			// Release the job and stop if the context got cancelled.
+			case <-ctx.Done():
+				if err = job.Release(ctx); err != nil {
+					consumer.config.ErrorFunc(err, "Unable to release job back")
+				}
+
+				return nil
+			}
 		}
 
-		// Put the reserve request back onto the queue and return if an error
-		// occurred.
+		// Put the reserve request back and return if an error occurred.
 		consumer.reserveC <- jobC
 		if err != nil {
 			return err
 		}
 
-		// No job reserved and no error, so wait a bit before trying to reserve
-		// again. If the context is done, wait for the goroutines from Receive
-		// to finish before returning.
+		// No reserved job and no error, so wait it bit before trying to reserve
+		// again.
 		select {
 		case <-time.After(consumer.config.ReserveTimeout):
 		case <-ctx.Done():
-			consumer.wg.Wait()
 			return nil
 		}
 	}
