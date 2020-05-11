@@ -72,7 +72,7 @@ func includes(a []string, s string) bool {
 }
 
 // validURIs returns an error if any of the specified URIs is invalid, or if
-// the hostnames in the URIs could not be resolved.
+// the host names in the URIs could not be resolved.
 func validURIs(uris []string) error {
 	if len(uris) == 0 {
 		return errors.New("no URIs specified")
