@@ -7,8 +7,8 @@ import (
 	"time"
 )
 
-// Consumer maintains a pool of connections to beanstalk servers on which it
-// reserves jobs.
+// Consumer maintains a pool of connections and allows workers to reserve jobs
+// on those connections.
 type Consumer struct {
 	uris     []string
 	tubes    []string
@@ -41,7 +41,7 @@ func (consumer *Consumer) Receive(ctx context.Context, fn func(ctx context.Conte
 		})
 	}
 
-	// Spin up the worker goroutines that call fn for every reserved job.
+	// Spin up the workers in their own goroutine.
 	for i := 0; i < consumer.config.NumGoroutines; i++ {
 		consumer.wg.Add(1)
 
@@ -51,12 +51,11 @@ func (consumer *Consumer) Receive(ctx context.Context, fn func(ctx context.Conte
 		}()
 	}
 
-	// Wait for all the reserving goroutines to finish before returning.
+	// Wait for all the workers to finish before returning.
 	consumer.wg.Wait()
 }
 
-// worker issues async reserve requests and when successful, calls fn with the
-// reserved job.
+// worker calls fn for every job it can reserve.
 func (consumer *Consumer) worker(ctx context.Context, fn func(ctx context.Context, job *Job)) {
 	jobC := make(chan *Job)
 
@@ -72,7 +71,7 @@ func (consumer *Consumer) worker(ctx context.Context, fn func(ctx context.Contex
 				fn(context.Background(), job)
 			}()
 
-		// Stop if the context got cancelled.
+		// Stop if the context was cancelled.
 		case <-ctx.Done():
 			return
 		}
@@ -103,16 +102,15 @@ func (consumer *Consumer) watchTubes(ctx context.Context, conn *Conn) error {
 }
 
 // reserveJobs is responsible for reserving jobs on demand and pass them back
-// to the goroutine in Receive that will call its fn with it.
+// to the worker method that will call its worker function with it.
 func (consumer *Consumer) reserveJobs(ctx context.Context, conn *Conn) error {
 	var jobC chan *Job
 	var job *Job
 	var err error
 
-	// If the return error is nil, then wait for the goroutines spun up by
-	// Receive to finish before returning. This is done because returning closes
-	// the TCP connection to the beanstalk server and there might be jobs left
-	// who need it to finish up.
+	// If the return error is nil, then the context was cancelled. However,
+	// reserved jobs on this connection might still need to finish up so wait for
+	// the workers to finish before returning (and thus closing) the connection.
 	defer func() {
 		if err == nil {
 			consumer.wg.Wait()
@@ -120,7 +118,7 @@ func (consumer *Consumer) reserveJobs(ctx context.Context, conn *Conn) error {
 	}()
 
 	for {
-		// Wait for a reserve request to come in.
+		// Wait for a reserve request from a worker to come in.
 		select {
 		case jobC = <-consumer.reserveC:
 		case <-ctx.Done():
@@ -130,13 +128,14 @@ func (consumer *Consumer) reserveJobs(ctx context.Context, conn *Conn) error {
 		// Attempt to reserve a job.
 		if job, err = conn.ReserveWithTimeout(ctx, 0); job != nil {
 			select {
-			// Return the job to the worker.
+			// Return the job to the worker and wait for another reserve request.
 			case jobC <- job:
 				continue
-			// Release the job and stop if the context got cancelled.
+
+			// Release the job and stop if the context was cancelled.
 			case <-ctx.Done():
 				if err = job.Release(ctx); err != nil {
-					consumer.config.ErrorFunc(err, "Unable to release job back")
+					consumer.config.ErrorFunc(err, "Unable to release job after context was cancelled")
 				}
 
 				return nil
@@ -149,8 +148,7 @@ func (consumer *Consumer) reserveJobs(ctx context.Context, conn *Conn) error {
 			return err
 		}
 
-		// No reserved job and no error, so wait it bit before trying to reserve
-		// again.
+		// The watched tubes are empty, so wait a bit before reserving again.
 		select {
 		case <-time.After(consumer.config.ReserveTimeout):
 		case <-ctx.Done():
