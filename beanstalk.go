@@ -71,14 +71,25 @@ func includes(a []string, s string) bool {
 	return false
 }
 
-// validURis returns an error if any of the specified URIs is invalid.
+// validURIs returns an error if any of the specified URIs is invalid, or if
+// the hostnames in the URIs could not be resolved.
 func validURIs(uris []string) error {
 	if len(uris) == 0 {
 		return errors.New("no URIs specified")
 	}
 
 	for _, uri := range uris {
-		if _, _, err := ParseURI(uri); err != nil {
+		hostport, _, err := ParseURI(uri)
+		if err != nil {
+			return err
+		}
+
+		host, _, err := net.SplitHostPort(hostport)
+		if err != nil {
+			return err
+		}
+
+		if _, err = net.LookupHost(host); err != nil {
 			return err
 		}
 	}
