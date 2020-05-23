@@ -21,8 +21,10 @@ var (
 	ErrBuried       = errors.New("job was buried")
 	ErrDeadlineSoon = errors.New("deadline soon")
 	ErrDisconnected = errors.New("client disconnected")
+	ErrDraining     = errors.New("server is draining")
 	ErrNotFound     = errors.New("job not found")
 	ErrTimedOut     = errors.New("reserve timed out")
+	ErrTooBig       = errors.New("job too big")
 	ErrNotIgnored   = errors.New("tube not ignored")
 	ErrTubeTooLong  = errors.New("tube name too long")
 	ErrUnexpected   = errors.New("unexpected response received")
@@ -194,6 +196,10 @@ func (conn *Conn) command(ctx context.Context, format string, params ...interfac
 			return 0, nil, ErrBuried
 		case "DEADLINE_SOON":
 			return 0, nil, ErrDeadlineSoon
+		case "DRAINING":
+			return 0, nil, ErrDraining
+		case "JOB_TOO_BIG":
+			return 0, nil, ErrTooBig
 		case "NOT_FOUND":
 			return 0, nil, ErrNotFound
 		case "NOT_IGNORED":
