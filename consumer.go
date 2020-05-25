@@ -104,8 +104,6 @@ func (consumer *Consumer) watchTubes(ctx context.Context, conn *Conn) error {
 // reserveJobs is responsible for reserving jobs on demand and pass them back
 // to the worker method that will call its worker function with it.
 func (consumer *Consumer) reserveJobs(ctx context.Context, conn *Conn) error {
-	var jobC chan *Job
-	var job *Job
 	var err error
 
 	// If the return error is nil, then the context was cancelled. However,
@@ -117,6 +115,8 @@ func (consumer *Consumer) reserveJobs(ctx context.Context, conn *Conn) error {
 		}
 	}()
 
+	var job *Job
+	var jobC chan *Job
 	for {
 		// Wait for a reserve request from a worker to come in.
 		select {
