@@ -23,10 +23,12 @@ func (line Line) At(lineno int, s string) bool {
 
 // Server implements a test beanstalk server.
 type Server struct {
-	listener net.Listener
-	mu       sync.RWMutex
-	lineno   int
-	handler  func(line Line) string
+	listener  net.Listener
+	mu        sync.RWMutex
+	lineno    int
+	handler   func(line Line) string
+	closeC    chan struct{}
+	closeOnce sync.Once
 }
 
 // NewServer returns a new Server.
@@ -36,7 +38,7 @@ func NewServer() *Server {
 		panic("Unable to set up listening socket for text beanstalk server: " + err.Error())
 	}
 
-	server := &Server{listener: listener}
+	server := &Server{listener: listener, closeC: make(chan struct{})}
 	go server.accept()
 
 	return server
@@ -44,7 +46,10 @@ func NewServer() *Server {
 
 // Close the server socket.
 func (server *Server) Close() {
-	_ = server.listener.Close()
+	server.closeOnce.Do(func() {
+		close(server.closeC)
+		_ = server.listener.Close()
+	})
 }
 
 // accept incoming connections.
@@ -65,14 +70,42 @@ func (server *Server) accept() {
 func (server *Server) handleConn(conn *textproto.Conn) {
 	defer conn.Close()
 
+	lineC := make(chan string)
+
+	// Read incoming lines and send them to lineC.
+	go func() {
+		for {
+			line, err := conn.ReadLine()
+			if err != nil {
+				close(lineC)
+				return
+			}
+
+			select {
+			case lineC <- line:
+			case <-server.closeC:
+				return
+			}
+		}
+	}()
+
+	// Process incoming lines and send them to the configured handler.
 	for {
-		line, err := conn.ReadLine()
-		if err != nil {
+		var line string
+		var closed bool
+
+		select {
+		case line, closed = <-lineC:
+			if !closed {
+				return
+			}
+
+		case <-server.closeC:
 			return
 		}
 
-		// Fetch a read-lock and call the handler with the line information that
-		// was just read.
+		// Execute this in an inline function so that the lock/unlock mechanism
+		// is handled elegantly.
 		func() {
 			server.mu.RLock()
 			defer server.mu.RUnlock()
