@@ -163,7 +163,7 @@ func TestProducerPool(t *testing.T) {
 
 	// Test if 3 calls to Put will result in the 3 servers being called.
 	for i, server := range servers {
-		t.Run(fmt.Sprintf("PutServer%d", i+1), func(t *testing.T) {
+		t.Run(fmt.Sprintf("PutOnServer%d", i+1), func(t *testing.T) {
 			server.HandleFunc(func(line Line) string {
 				switch {
 				case line.At(1, "use foobar"):
@@ -195,7 +195,7 @@ func TestProducerPool(t *testing.T) {
 		// 1st, 2nd and 3rd server in that order.
 		rand.Seed(1)
 
-		t.Run(fmt.Sprintf("PutWith%dDisconnected", i+1), func(t *testing.T) {
+		t.Run(fmt.Sprintf("PutWith%dServersDisconnected", i+1), func(t *testing.T) {
 			server.Close()
 
 			// Since server is closed, server+1 should get the Put request.
@@ -218,6 +218,31 @@ func TestProducerPool(t *testing.T) {
 			case id != 5:
 				t.Fatalf("Expected job ID 5, but got %d", id)
 			}
+
+			// Test if the Producer is still marked as connected.
+			t.Run("IsConnected", func(t *testing.T) {
+				if !producer.IsConnected() {
+					t.Fatal("Expected producer to be connected")
+				}
+			})
 		})
 	}
+
+	t.Run("PutWithAllServersDisconnected", func(t *testing.T) {
+		servers[2].Close()
+
+		_, err := producer.Put(context.Background(), "foobar", []byte("Hello World"), params)
+		switch {
+		case err == ErrDisconnected:
+		case err != nil:
+			t.Fatalf("Error inserting a new job: %s", err)
+		}
+
+		// Test if the Producer is still marked as connected.
+		t.Run("IsConnected", func(t *testing.T) {
+			if producer.IsConnected() {
+				t.Fatal("Expected producer to be disconnected")
+			}
+		})
+	})
 }
