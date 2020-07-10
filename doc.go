@@ -32,16 +32,17 @@ Consumer
 The Consumer is used to reserve jobs from tubes. It provides a connection pool:
 
 	consumer, err := beanstalk.NewConsumer([]string{"localhost:11300"}, []string{"mytube"}, beanstalk.Config{
+		// Multiply the list of URIs to create a larger pool of connections.
+		Multiply: 3,
 		// NumGoroutines is the number of goroutines that the Receive method will
 		// spin up to process jobs concurrently.
-		NumGoroutines: 10,
-		// ReserveTimeout is the time a consumer connection waits between reserve
-		// attempts if the last attempt failed to reserve a job.
-		ReserveTimeout: 1 * time.Second,
+		NumGoroutines: 30,
 	})
 	if err != nil {
 		// handle error
 	}
+
+The ratio of Multiply and NumGoroutines is important. Multiply determines the size of the connection pool and NumGoroutines determines how many reserved jobs you have in-flight. If you have a limited number of connections, but a high number of reserved jobs in-flight, your TCP connection pool might experience congestion and your processing speed will suffer. Although the ratio depends on the speed by which jobs are processed, a good rule of thumb is 1:10.
 
 Reserve jobs from the tubes specified in NewConsumer is done by calling Receive, which will reserve jobs on any of the connections in the pool:
 
