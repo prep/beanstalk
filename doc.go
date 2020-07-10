@@ -5,7 +5,10 @@ Producer
 
 The Producer is used to put jobs into tubes. It provides a connection pool:
 
-	producer, err := beanstalk.NewProducer([]string{"localhost:11300"}, beanstalk.Config{})
+	producer, err := beanstalk.NewProducer([]string{"localhost:11300"}, beanstalk.Config{
+		// Multiply the list of URIs to create a larger pool of connections.
+		Multiply: 3,
+	})
 	if err != nil {
 		// handle error
 	}
@@ -66,6 +69,19 @@ For direct operations on a single connection a Conn can be created:
 	// conn.Put(...)
 	// conn.Watch(...)
 	// conn.Reserve(...)
+
+Logging
+
+The Config structure offers hooks for info and error logs that allows hooking in to a custom log solution.
+
+	config := beanstalk.Config{
+		InfoFunc: func(message string) {
+			log.Info(message)
+		},
+		ErrorFunc: func(err error, message string) {
+			log.WithError(err).Error(message)
+		},
+	}
 
 URIs
 

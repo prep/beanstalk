@@ -7,9 +7,7 @@ import (
 
 // Config is used to configure a Consumer, Producer or Conn.
 type Config struct {
-	// Multiply the list of URIs specified to the consumer or producer. The
-	// effect of this is more TCP connections being set up to load balance
-	// traffic over.
+	// Multiply the list of URIs to create a larger pool of connections.
 	//
 	// The default is to have 1.
 	Multiply int
