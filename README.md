@@ -67,9 +67,29 @@ consumer.Receive(ctx, func(ctx context.Context, job *beanstalk.Job) {
 
 If the context passed to Receive is cancelled, Receive will finish processing the jobs it has reserved before returning.
 
+### Job
+
+When Receive offers a job the goroutine is responsible for processing that job and finishing it up. A job can either be deleted, released or buried:
+
+```go
+// Delete a job, when processing was successful.
+err = job.Delete(ctx)
+
+// Release a job, putting it back in the queue for another worker to pick up.
+err = job.Release(ctx)
+
+// Release a job, but put it back with a custom priority and a delay before
+// it's offered to another worker.
+err = job.ReleaseWithParams(ctx, 512, 5 * time.Second)
+
+// Bury a job, when it doesn't need to be processed but needs to be kept
+// around for manual inspection or manual requeuing.
+err = job.Bury(ctx)
+```
+
 ### Conn
 
-For direct operations on a single connection a Conn can be created:
+If the Producer and Consumer abstractions are too high, then Conn provides the lower level abstraction of a single connection to a beanstalk server:
 
 ```go
 conn, err := beanstalk.Dial("localhost:11300", beanstalk.Config{}))
