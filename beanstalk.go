@@ -1,6 +1,8 @@
 package beanstalk
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -58,6 +60,7 @@ func ParseURI(uri string) (string, bool, error) {
 	return host, isTLS, nil
 }
 
+// includes returns true if s is contained in a.
 func includes(a []string, s string) bool {
 	for _, e := range a {
 		if e == s {
@@ -68,69 +71,91 @@ func includes(a []string, s string) bool {
 	return false
 }
 
-type ioHandler interface {
-	setupConnection(conn *Conn, config Config) error
-	handleIO(conn *Conn, config Config) error
+// validURIs returns an error if any of the specified URIs is invalid, or if
+// the host names in the URIs could not be resolved.
+func validURIs(uris []string) error {
+	if len(uris) == 0 {
+		return errors.New("no URIs specified")
+	}
+
+	for _, uri := range uris {
+		hostport, _, err := ParseURI(uri)
+		if err != nil {
+			return err
+		}
+
+		host, _, err := net.SplitHostPort(hostport)
+		if err != nil {
+			return err
+		}
+
+		if _, err = net.LookupHost(host); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
-// keepConnected is responsible for keeping a connection to a URI up.
-func keepConnected(handler ioHandler, conn *Conn, config Config, close chan struct{}) {
-	URI := conn.URI
+type connHandler struct {
+	// setup the connection after it has been established. This is used by
+	// the consumer to watch the proper tubes.
+	setup func(context.Context, *Conn) error
+	// handle the connection after the setup has been done. This method returns
+	// on connection error or when the context is cancelled.
+	handle func(context.Context, *Conn) error
+}
 
-	go func() {
-		var err error
-		for {
-			// Reconnect to the beanstalk server if no connection is active.
-			for conn == nil {
-				if conn, err = Dial(URI, config); err != nil {
-					config.ErrorLog.Printf("Unable to connect to beanstalk server %s: %s", URI, err)
+// maintainConn is responsible for maintaining a connection to a beanstalk
+// server on behalf of a Consumer or Producer.
+func maintainConn(ctx context.Context, uri string, config Config, handler connHandler) {
+	var conn *Conn
+	var err error
 
-					select {
-					// Wait a bit and try again.
-					case <-time.After(config.ReconnectTimeout):
-						continue
-					case <-close:
-						return
-					}
-				}
-			}
-
-			config.InfoLog.Printf("Connected to beanstalk server %s", conn)
-
-			// Set up the connection. If not successful, close the connection, wait
-			// a bit and reconnect.
-			err := handler.setupConnection(conn, config)
-			if err != nil {
-				config.InfoLog.Printf("Unable to set up the beanstalk connection: %s", err)
-				_ = conn.Close()
-				conn = nil
-
-				select {
-				case <-time.After(config.ReconnectTimeout):
-				case <-close:
-					return
-				}
-
-				continue
-			}
-
-			// call the IO handler for as long as it wants it, or the connection is up.
-			if err = handler.handleIO(conn, config); err != nil && err != ErrDisconnected {
-				config.ErrorLog.Printf("Disconnected from beanstalk server %s: %s", conn, err)
-			} else {
-				config.InfoLog.Printf("Disconnected from beanstalk server %s", conn)
-			}
-
-			_ = conn.Close()
-			conn = nil
+	for {
+		// Create a connection to the beanstalk server.
+		if conn, err = Dial(uri, config); err != nil {
+			config.ErrorFunc(err, fmt.Sprintf("Unable to connect to beanstalk server: %s", uri))
 
 			select {
-			case <-close:
+			case <-time.After(config.ReconnectTimeout):
+				continue
+			case <-ctx.Done():
 				return
-			default:
 			}
 		}
-	}()
+
+		config.InfoFunc(fmt.Sprintf("Connected to beanstalk server %s", conn))
+
+		// Set up the connection before really using it.
+		if handler.setup != nil {
+			if err = handler.setup(ctx, conn); err != nil {
+				config.ErrorFunc(err, "Unable to set up the beanstalk connection")
+
+				_ = conn.Close()
+				select {
+				case <-time.After(config.ReconnectTimeout):
+					continue
+				case <-ctx.Done():
+					return
+				}
+			}
+		}
+
+		// Hand over the connection.
+		if err = handler.handle(ctx, conn); err != nil && err != ErrDisconnected {
+			config.ErrorFunc(err, fmt.Sprintf("Disconnected from beanstalk server %s", conn))
+		} else {
+			config.InfoFunc(fmt.Sprintf("Disconnected from beanstalk server %s", conn))
+		}
+
+		_ = conn.Close()
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+	}
 }
 
 // multiply a slice by the specified amount. This is used to multiply the

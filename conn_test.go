@@ -23,10 +23,12 @@ func (line Line) At(lineno int, s string) bool {
 
 // Server implements a test beanstalk server.
 type Server struct {
-	listener net.Listener
-	mu       sync.RWMutex
-	lineno   int
-	handler  func(line Line) string
+	listener  net.Listener
+	mu        sync.RWMutex
+	lineno    int
+	handler   func(line Line) string
+	closeC    chan struct{}
+	closeOnce sync.Once
 }
 
 // NewServer returns a new Server.
@@ -36,7 +38,7 @@ func NewServer() *Server {
 		panic("Unable to set up listening socket for text beanstalk server: " + err.Error())
 	}
 
-	server := &Server{listener: listener}
+	server := &Server{listener: listener, closeC: make(chan struct{})}
 	go server.accept()
 
 	return server
@@ -44,7 +46,10 @@ func NewServer() *Server {
 
 // Close the server socket.
 func (server *Server) Close() {
-	_ = server.listener.Close()
+	server.closeOnce.Do(func() {
+		close(server.closeC)
+		_ = server.listener.Close()
+	})
 }
 
 // accept incoming connections.
@@ -65,14 +70,42 @@ func (server *Server) accept() {
 func (server *Server) handleConn(conn *textproto.Conn) {
 	defer conn.Close()
 
+	lineC := make(chan string)
+
+	// Read incoming lines and send them to lineC.
+	go func() {
+		for {
+			line, err := conn.ReadLine()
+			if err != nil {
+				close(lineC)
+				return
+			}
+
+			select {
+			case lineC <- line:
+			case <-server.closeC:
+				return
+			}
+		}
+	}()
+
+	// Process incoming lines and send them to the configured handler.
 	for {
-		line, err := conn.ReadLine()
-		if err != nil {
+		var line string
+		var closed bool
+
+		select {
+		case line, closed = <-lineC:
+			if !closed {
+				return
+			}
+
+		case <-server.closeC:
 			return
 		}
 
-		// Fetch a read-lock and call the handler with the line information that
-		// was just read.
+		// Execute this in an inline function so that the lock/unlock mechanism
+		// is handled elegantly.
 		func() {
 			server.mu.RLock()
 			defer server.mu.RUnlock()
@@ -132,10 +165,7 @@ func TestConn(t *testing.T) {
 			return ""
 		})
 
-		err := conn.bury(ctx, &Job{ID: 1}, 10)
-		switch {
-		case err == ErrDisconnected:
-		case err != nil:
+		if err := conn.bury(ctx, &Job{ID: 1}, 10); err != nil {
 			t.Fatalf("Error burying job: %s", err)
 		}
 
@@ -154,7 +184,6 @@ func TestConn(t *testing.T) {
 
 			err := conn.bury(ctx, &Job{ID: 2}, 11)
 			switch {
-			case err == ErrDisconnected:
 			case err == ErrNotFound:
 			case err != nil:
 				t.Fatalf("Error burying job: %s", err)
@@ -175,10 +204,7 @@ func TestConn(t *testing.T) {
 			return ""
 		})
 
-		err := conn.delete(ctx, &Job{ID: 3})
-		switch {
-		case err == ErrDisconnected:
-		case err != nil:
+		if err := conn.delete(ctx, &Job{ID: 3}); err != nil {
 			t.Fatalf("Error deleting job: %s", err)
 		}
 
@@ -197,7 +223,6 @@ func TestConn(t *testing.T) {
 
 			err := conn.delete(ctx, &Job{ID: 4})
 			switch {
-			case err == ErrDisconnected:
 			case err == ErrNotFound:
 			case err != nil:
 				t.Fatalf("Error deleting job: %s", err)
@@ -216,10 +241,7 @@ func TestConn(t *testing.T) {
 			return ""
 		})
 
-		err := conn.Ignore(ctx, "foo")
-		switch {
-		case err == ErrDisconnected:
-		case err != nil:
+		if err := conn.Ignore(ctx, "foo"); err != nil {
 			t.Fatalf("Error ignoring tube: %s", err)
 		}
 
@@ -237,9 +259,9 @@ func TestConn(t *testing.T) {
 
 			err := conn.Ignore(ctx, "bar")
 			switch {
-			case err == ErrDisconnected:
-			case err != ErrNotIgnored:
-				t.Fatalf("Expected the ErrNotIgnored error, but got %s", err)
+			case err == ErrNotIgnored:
+			case err != nil:
+				t.Fatalf("Error ignoring tube: %s", err)
 			}
 		})
 	})
@@ -262,7 +284,6 @@ func TestConn(t *testing.T) {
 
 		id, err := conn.Put(ctx, "foobar", []byte("Hello World"), PutParams{Priority: 1024, Delay: 10 * time.Second, TTR: 60 * time.Second})
 		switch {
-		case err == ErrDisconnected:
 		case err != nil:
 			t.Fatalf("Error inserting a new job: %s", err)
 		case id != 5:
@@ -286,7 +307,6 @@ func TestConn(t *testing.T) {
 
 			id, err := conn.Put(ctx, "foobar", []byte("Hello World"), PutParams{Priority: 1024, Delay: 10 * time.Second, TTR: 60 * time.Second})
 			switch {
-			case err == ErrDisconnected:
 			case err != nil:
 				t.Fatalf("Error inserting a new job: %s", err)
 			case id != 6:
@@ -313,7 +333,6 @@ func TestConn(t *testing.T) {
 
 			id, err := conn.Put(ctx, "zoink", []byte("Hello Narf"), PutParams{Priority: 512, Delay: 15 * time.Second, TTR: 30 * time.Second})
 			switch {
-			case err == ErrDisconnected:
 			case err != nil:
 				t.Fatalf("Error inserting a new job: %s", err)
 			case id != 7:
@@ -337,7 +356,6 @@ func TestConn(t *testing.T) {
 
 		err := conn.release(ctx, &Job{ID: 8}, 12, 20*time.Second)
 		switch {
-		case err == ErrDisconnected:
 		case err != nil:
 			t.Fatalf("Error releasing job: %s", err)
 		}
@@ -357,8 +375,8 @@ func TestConn(t *testing.T) {
 
 			err := conn.release(ctx, &Job{ID: 9}, 13, 21*time.Second)
 			switch {
-			case err == ErrDisconnected:
-			case err != ErrBuried:
+			case err == ErrBuried:
+			case err != nil:
 				t.Fatalf("Expected the ErrBuried error, but got %s", err)
 			}
 		})
@@ -378,8 +396,8 @@ func TestConn(t *testing.T) {
 
 			err := conn.release(ctx, &Job{ID: 10}, 14, 22*time.Second)
 			switch {
-			case err == ErrDisconnected:
-			case err != ErrNotFound:
+			case err == ErrNotFound:
+			case err != nil:
 				t.Fatalf("Expected the ErrNotFound error, but got %s", err)
 			}
 		})
@@ -402,7 +420,6 @@ func TestConn(t *testing.T) {
 
 		job, err := conn.ReserveWithTimeout(ctx, 1*time.Second)
 		switch {
-		case err == ErrDisconnected:
 		case err != nil:
 			t.Fatalf("Error reserving a job: %s", err)
 		case job == nil:
@@ -462,7 +479,6 @@ func TestConn(t *testing.T) {
 
 			job, err := conn.ReserveWithTimeout(ctx, 2*time.Second)
 			switch {
-			case err == ErrDisconnected:
 			case err != nil:
 				t.Fatalf("Error reserving a job: %s", err)
 			case job != nil:
@@ -485,7 +501,6 @@ func TestConn(t *testing.T) {
 
 			job, err := conn.ReserveWithTimeout(ctx, 3*time.Second)
 			switch {
-			case err == ErrDisconnected:
 			case err != nil:
 				t.Fatalf("Error reserving a job: %s", err)
 			case job != nil:
@@ -511,7 +526,6 @@ func TestConn(t *testing.T) {
 
 			job, err := conn.ReserveWithTimeout(ctx, 4*time.Second)
 			switch {
-			case err == ErrDisconnected:
 			case err != nil:
 				t.Fatalf("Error reserving a job: %s", err)
 			case job != nil:
@@ -538,7 +552,6 @@ func TestConn(t *testing.T) {
 
 		err := conn.touch(ctx, job)
 		switch {
-		case err == ErrDisconnected:
 		case err != nil:
 			t.Fatalf("Error watching a channel: %s", err)
 		case job.Stats.PutParams.TTR != 5*time.Second:
@@ -563,8 +576,8 @@ func TestConn(t *testing.T) {
 
 			err := conn.touch(ctx, &Job{ID: 14})
 			switch {
-			case err == ErrDisconnected:
-			case err != ErrNotFound:
+			case err == ErrNotFound:
+			case err != nil:
 				t.Fatalf("Expected the ErrNotFound error, but got %s", err)
 			}
 		})
@@ -583,10 +596,7 @@ func TestConn(t *testing.T) {
 			return ""
 		})
 
-		err := conn.Watch(ctx, "events")
-		switch {
-		case err == ErrDisconnected:
-		case err != nil:
+		if err := conn.Watch(ctx, "events"); err != nil {
 			t.Fatalf("Error watching a channel: %s", err)
 		}
 
@@ -595,8 +605,8 @@ func TestConn(t *testing.T) {
 		t.Run("ErrTubeTooLong", func(t *testing.T) {
 			err := conn.Watch(ctx, string(make([]byte, 201)))
 			switch {
-			case err == ErrDisconnected:
-			case err != ErrTubeTooLong:
+			case err == ErrTubeTooLong:
+			case err != nil:
 				t.Fatalf("Expected the ErrTubeTooLong error, but got %s", err)
 			}
 		})

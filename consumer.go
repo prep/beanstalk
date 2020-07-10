@@ -7,118 +7,93 @@ import (
 	"time"
 )
 
-// Consumer maintains a connnection to a beanstalk server and offers up jobs
-// on its exposed jobs channel. When it gets disconnected, it automatically
-// tries to reconnect.
+// Consumer maintains a pool of connections and allows workers to reserve jobs
+// on those connections.
 type Consumer struct {
-	// C offers up reserved jobs.
-	C <-chan *Job
-
-	tubes     []string
-	config    Config
-	isPaused  bool
-	pause     chan bool
-	close     chan struct{}
-	closeOnce sync.Once
-	mu        sync.Mutex
+	uris     []string
+	tubes    []string
+	config   Config
+	reserveC chan chan *Job
+	wg       sync.WaitGroup
 }
 
-// NewConsumer connects to the beanstalk server that's referenced in URI and
-// returns a Consumer.
-func NewConsumer(uri string, tubes []string, config Config) (*Consumer, error) {
-	config = config.normalize()
-
-	conn, err := Dial(uri, config)
-	if err != nil {
+// NewConsumer returns a new Consumer.
+func NewConsumer(uris []string, tubes []string, config Config) (*Consumer, error) {
+	if err := validURIs(uris); err != nil {
 		return nil, err
 	}
 
-	consumer := &Consumer{
-		C:        config.jobC,
+	return &Consumer{
+		uris:     uris,
 		tubes:    tubes,
-		config:   config,
-		isPaused: true,
-		pause:    make(chan bool, 1),
-		close:    make(chan struct{}),
-	}
-
-	keepConnected(consumer, conn, config, consumer.close)
-	return consumer, nil
+		config:   config.normalize(),
+		reserveC: make(chan chan *Job, config.NumGoroutines),
+	}, nil
 }
 
-// Close this consumer's connection.
-func (consumer *Consumer) Close() {
-	consumer.closeOnce.Do(func() {
-		close(consumer.close)
-	})
-}
-
-// Play unpauses this customer.
-func (consumer *Consumer) Play() {
-	consumer.mu.Lock()
-	defer consumer.mu.Unlock()
-
-	select {
-	case <-consumer.close:
-	case consumer.pause <- false:
-	case <-consumer.pause:
-		consumer.pause <- false
-	}
-}
-
-// Pause this consumer.
-func (consumer *Consumer) Pause() {
-	consumer.mu.Lock()
-	defer consumer.mu.Unlock()
-
-	select {
-	case <-consumer.close:
-	case consumer.pause <- true:
-	case <-consumer.pause:
-		consumer.pause <- true
-	}
-}
-
-// Receive calls fn for each job it can reserve on this consumer.
+// Receive calls fn for each job it can reserve.
 func (consumer *Consumer) Receive(ctx context.Context, fn func(ctx context.Context, job *Job)) {
-	var wg sync.WaitGroup
-	wg.Add(consumer.config.NumGoroutines)
+	// Spin up the connections to the beanstalk servers.
+	for _, uri := range multiply(consumer.uris, consumer.config.Multiply) {
+		go maintainConn(ctx, uri, consumer.config, connHandler{
+			setup:  consumer.watchTubes,
+			handle: consumer.reserveJobs,
+		})
+	}
 
+	// Spin up the workers in their own goroutine.
 	for i := 0; i < consumer.config.NumGoroutines; i++ {
+		consumer.wg.Add(1)
+
 		go func() {
-			defer wg.Done()
-
-			for {
-				select {
-				case job := <-consumer.C:
-					fn(ctx, job)
-
-				case <-ctx.Done():
-					return
-				case <-consumer.close:
-					return
-				}
-			}
+			defer consumer.wg.Done()
+			consumer.worker(ctx, fn)
 		}()
 	}
 
-	wg.Wait()
+	// Wait for all the workers to finish before returning.
+	consumer.wg.Wait()
 }
 
-func (consumer *Consumer) setupConnection(conn *Conn, config Config) error {
-	// If no tubes were specified, stick to the default one.
+// worker calls fn for every job it can reserve.
+func (consumer *Consumer) worker(ctx context.Context, fn func(ctx context.Context, job *Job)) {
+	jobC := make(chan *Job)
+
+	for {
+		// Add a reserve request to the reserve channel.
+		consumer.reserveC <- jobC
+
+		select {
+		// If a reserved job comes in, pass it to fn.
+		case job := <-jobC:
+			func() {
+				defer job.Release(context.Background())
+				fn(context.Background(), job)
+			}()
+
+		// Stop if the context was cancelled.
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// watchTubes watches the requested tubes.
+func (consumer *Consumer) watchTubes(ctx context.Context, conn *Conn) error {
 	if len(consumer.tubes) == 0 {
 		return nil
 	}
 
+	// Watch all the requested tubes.
 	for _, tube := range consumer.tubes {
-		if err := conn.Watch(context.Background(), tube); err != nil {
+		if err := conn.Watch(ctx, tube); err != nil {
 			return fmt.Errorf("error watching tube: %s: %s", tube, err)
 		}
 	}
 
+	// Ignore the default tube, unless it was explicitly requested.
 	if !includes(consumer.tubes, "default") {
-		if err := conn.Ignore(context.Background(), "default"); err != nil {
+		if err := conn.Ignore(ctx, "default"); err != nil {
 			return fmt.Errorf("error ignoring default tube: %s", err)
 		}
 	}
@@ -126,115 +101,58 @@ func (consumer *Consumer) setupConnection(conn *Conn, config Config) error {
 	return nil
 }
 
-// handleIO is responsible for reserving jobs on the connection and offering
-// them up to a listener on C.
-func (consumer *Consumer) handleIO(conn *Conn, config Config) (err error) {
+// reserveJobs is responsible for reserving jobs on demand and pass them back
+// to the worker method that will call its worker function with it.
+func (consumer *Consumer) reserveJobs(ctx context.Context, conn *Conn) error {
+	var err error
+
+	// If the return error is nil, then the context was cancelled. However,
+	// reserved jobs on this connection might still need to finish up so wait for
+	// the workers to finish before returning (and thus closing) the connection.
+	defer func() {
+		if err == nil {
+			consumer.wg.Wait()
+		}
+	}()
+
 	var job *Job
-	var jobC chan<- *Job
-
-	// reserveTimeout is used to pause between reserve attempts when the last
-	// attempt failed to reserve a job.
-	reserveTimeout := time.NewTimer(0)
-	if consumer.isPaused {
-		reserveTimeout.Stop()
-	}
-
-	// releaseTimeout is used to release a reserved job back to prevent holding
-	// a job too long when it doesn't get claimed in a reasonable amount of time.
-	releaseTimeout := time.NewTimer(time.Second)
-	releaseTimeout.Stop()
-
-	// releaseJob releases the currently reserved job.
-	releaseJob := func() error {
-		if job == nil {
-			return nil
-		}
-
-		releaseTimeout.Stop()
-
-		// Don't treat NOT_FOUND responses as a fatal error.
-		if err = job.Release(context.Background()); err == ErrNotFound {
-			config.ErrorLog.Printf("Consumer could not release job %d: %s", job.ID, err)
-			err = nil
-		}
-
-		job, jobC = nil, nil
-		return err
-	}
-
-	// reserveJob reserves a job.
-	reserveJob := func() error {
-		// Don't do anything if the connection is paused, or a job was already
-		// reserved.
-		if consumer.isPaused || job != nil {
+	var jobC chan *Job
+	for {
+		// Wait for a reserve request from a worker to come in.
+		select {
+		case jobC = <-consumer.reserveC:
+		case <-ctx.Done():
 			return nil
 		}
 
 		// Attempt to reserve a job.
-		job, err = conn.ReserveWithTimeout(context.Background(), 0)
-		switch {
-		case err != nil:
-			return err
+		if job, err = conn.ReserveWithTimeout(ctx, 0); job != nil {
+			select {
+			// Return the job to the worker and wait for another reserve request.
+			case jobC <- job:
+				continue
 
-		// Job reserved, so start the release timer so that the job isn't being
-		// held for too long if it doesn't get claimed.
-		case job != nil:
-			jobC = config.jobC
+			// Release the job and stop if the context was cancelled.
+			case <-ctx.Done():
+				if err = job.Release(ctx); err != nil {
+					consumer.config.ErrorFunc(err, "Unable to release job after context was cancelled")
+				}
 
-			// Make sure the release timer isn't bigger than the TTR of the job.
-			if job.TouchAfter() < config.ReleaseTimeout {
-				releaseTimeout.Reset(job.TouchAfter())
-			} else {
-				releaseTimeout.Reset(config.ReleaseTimeout)
+				return nil
 			}
-
-		// No job reserved, so try again after a pause.
-		default:
-			reserveTimeout.Reset(config.ReserveTimeout)
 		}
 
-		return nil
-	}
+		// Put the reserve request back and return if an error occurred.
+		consumer.reserveC <- jobC
+		if err != nil {
+			return err
+		}
 
-	for {
+		// The watched tubes are empty, so wait a bit before reserving again.
 		select {
-		// Offer up the reserved job.
-		case jobC <- job:
-			job, jobC = nil, nil
-			releaseTimeout.Stop()
-
-			// Immediately try to reserve a new job.
-			reserveTimeout.Reset(0)
-
-		// Try to reserve a new job.
-		case <-reserveTimeout.C:
-			if err = reserveJob(); err != nil {
-				return err
-			}
-
-		// Release the reserved job back, after having held it for a while.
-		case <-releaseTimeout.C:
-			if err = releaseJob(); err != nil {
-				return err
-			}
-
-			// Wait a bit before attempting another reserve. This gives other workers
-			// time to pick the previously released job.
-			reserveTimeout.Reset(config.ReserveTimeout)
-
-		// Pause or unpause this consumer.
-		case consumer.isPaused = <-consumer.pause:
-			if consumer.isPaused {
-				if err = releaseJob(); err != nil {
-					return err
-				}
-			} else {
-				reserveTimeout.Reset(0)
-			}
-
-		// Exit when this consumer is closing down.
-		case <-consumer.close:
-			return releaseJob()
+		case <-time.After(consumer.config.ReserveTimeout):
+		case <-ctx.Done():
+			return nil
 		}
 	}
 }

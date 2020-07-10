@@ -21,8 +21,10 @@ var (
 	ErrBuried       = errors.New("job was buried")
 	ErrDeadlineSoon = errors.New("deadline soon")
 	ErrDisconnected = errors.New("client disconnected")
+	ErrDraining     = errors.New("server is draining")
 	ErrNotFound     = errors.New("job not found")
 	ErrTimedOut     = errors.New("reserve timed out")
+	ErrTooBig       = errors.New("job too big")
 	ErrNotIgnored   = errors.New("tube not ignored")
 	ErrTubeTooLong  = errors.New("tube name too long")
 	ErrUnexpected   = errors.New("unexpected response received")
@@ -105,6 +107,7 @@ func (conn *Conn) deadline(ctx context.Context) time.Time {
 func (conn *Conn) command(ctx context.Context, format string, params ...interface{}) (uint64, []byte, error) {
 	// Write a command and read the response.
 	id, body, err := func() (uint64, []byte, error) {
+		// Detect network problems early by setting a deadline.
 		if deadline := conn.deadline(ctx); !deadline.IsZero() {
 			if err := conn.conn.SetDeadline(deadline); err != nil {
 				return 0, nil, err
@@ -113,15 +116,18 @@ func (conn *Conn) command(ctx context.Context, format string, params ...interfac
 			defer conn.conn.SetDeadline(time.Time{})
 		}
 
+		// Write the command.
 		if err := conn.text.PrintfLine(format, params...); err != nil {
 			return 0, nil, err
 		}
 
+		// Read the response.
 		line, err := conn.text.ReadLine()
 		if err != nil {
 			return 0, nil, err
 		}
 
+		// Parse the response.
 		parts := strings.SplitN(line, " ", 3)
 		switch parts[0] {
 		case "INSERTED":
@@ -190,6 +196,10 @@ func (conn *Conn) command(ctx context.Context, format string, params ...interfac
 			return 0, nil, ErrBuried
 		case "DEADLINE_SOON":
 			return 0, nil, ErrDeadlineSoon
+		case "DRAINING":
+			return 0, nil, ErrDraining
+		case "JOB_TOO_BIG":
+			return 0, nil, ErrTooBig
 		case "NOT_FOUND":
 			return 0, nil, ErrNotFound
 		case "NOT_IGNORED":
