@@ -13,8 +13,8 @@ type Config struct {
 	//
 	// The default is to have 1.
 	Multiply int
-	// NumGoroutines is the number of goroutines that the Receive() method will
-	// spin up.
+	// NumGoroutines is the number of goroutines that the Receive method will
+	// spin up to process jobs concurrently.
 	//
 	// The default is to spin up 10 goroutines.
 	NumGoroutines int
@@ -26,8 +26,8 @@ type Config struct {
 	//
 	// The default is to have no timeout.
 	ConnTimeout time.Duration
-	// ReserveTimeout is the time a consumer should wait before reserving a job,
-	// when the last attempt didn't yield a job.
+	// ReserveTimeout is the time a consumer connection waits between reserve
+	// attempts if the last attempt failed to reserve a job.
 	//
 	// The default is to wait 1 seconds.
 	ReserveTimeout time.Duration

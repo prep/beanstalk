@@ -1,104 +1,88 @@
-[![TravisCI](https://travis-ci.org/prep/beanstalk.svg?branch=master)](https://travis-ci.org/prep/beanstalk.svg?branch=master)
-[![GoDoc](https://godoc.org/github.com/prep/beanstalk?status.svg)](https://godoc.org/github.com/prep/beanstalk)
-
 # Package beanstalk
 `import "github.com/prep/beanstalk"`
 
 ## Overview
-Package beanstalk implements a beanstalk client that includes various
-abstractions to make producing and consuming jobs easier.
+Package beanstalk provides a beanstalk client.
 
-Create a Conn if you want the most basic version of a beanstalk client:
+### Producer
+
+The Producer is used to put jobs into tubes. It provides a connection pool:
 
 ```go
-conn, err := beanstalk.Dial("localhost:11300", beanstalk.Config{})
+producer, err := beanstalk.NewProducer([]string{"localhost:11300"}, beanstalk.Config{})
+if err != nil {
+	// handle error
+}
+defer producer.Stop()
+```
+
+Putting a job in a tube is done by calling Put, which will select a random connection for its operation:
+
+```go
+// Create the put parameters. These can be reused between Put calls.
+params := beanstalk.PutParams{Priority: 1024, Delay: 0, TTR: 30 * time.Second}
+
+// Put the "Hello World" message in the "mytube" tube.
+id, err := producer.Put(ctx, "mytube", []byte("Hello World"), params)
+if err != nil {
+	// handle error
+}
+```
+
+If a Put operation fails on a connection, another connection in the pool will be selected for a retry.
+
+### Consumer
+
+The Consumer is used to reserve jobs from tubes. It provides a connection pool:
+
+```go
+consumer, err := beanstalk.NewConsumer([]string{"localhost:11300"}, []string{"mytube"}, beanstalk.Config{
+	// NumGoroutines is the number of goroutines that the Receive method will
+	// spin up to process jobs concurrently.
+	NumGoroutines: 10,
+	// ReserveTimeout is the time a consumer connection waits between reserve
+	// attempts if the last attempt failed to reserve a job.
+	ReserveTimeout: 1 * time.Second,
+})
+if err != nil {
+	// handle error
+}
+```
+
+Reserve jobs from the tubes specified in NewConsumer is done by calling Receive, which will reserve jobs on any of the connections in the pool:
+
+```go
+// Call the inline function for every job that was reserved.
+consumer.Receive(ctx, func(ctx context.Context, job *beanstalk.Job) {
+	// handle job
+
+	if err := job.Delete(ctx); err != nil {
+		// handle error
+	}
+})
+```
+
+If the context passed to Receive is cancelled, Receive will finish processing the jobs it has reserved before returning.
+
+### Conn
+
+For direct operations on a single connection a Conn can be created:
+
+```go
+conn, err := beanstalk.Dial("localhost:11300", beanstalk.Config{}))
 if err != nil {
 	// handle error
 }
 defer conn.Close()
 
-id, err := conn.Put(ctx, "example_tube", []byte("Hello World"), beanstalk.PutParams{
-	Priority: 1024,
-	Delay:    2 * time.Second,
-	TTR:      1 * time.Minute,
-})
-if err != nil {
-	// handle error
-}
-
-if err = conn.Watch(ctx, "example_tube"); err != nil {
-	// handle error
-}
-
-job, err := conn.ReserveWithTimeout(ctx, 3*time.Second)
-if err != nil {
-	// handle error
-}
-
-// process job
-
-if err = job.Delete(ctx); err != nil {
-	// handle error
-}
+// conn.Put(...)
+// conn.Watch(...)
+// conn.Reserve(...)
 ```
 
-In most cases it is easier to leverage ConsumerPool and ProducerPool to manage
-one or more beanstalk client connections, as this provides some form of
-load balacning and auto-reconnect mechanisms under the hood.
+### URIs
 
-The ProducerPool manages one or more client connections used specifically for
-producing beanstalk jobs. If exports a Put method that load balances between the
-available connections
+NewProducer, NewConsumer and Dial take a URI or a list of URIs as their first argument, who can be described in various formats. In the above examples the beanstalk server was referenced by the host:port notation. This package also supports URI formats like beanstalk:// for a plaintext connection, and beanstalks:// or tls:// for encrypted connections.
 
-```go
-pool, err := beanstalk.NewProducerPool([]string{"localhost:11300"}, beanstalk.Config{})
-if err != nil {
-	// handle error
-}
-defer pool.Stop()
+In the case of encrypted connections, if no port has been specified it will default to port 11400 as opposed to the default 11300 port.
 
-id, err := pool.Put(ctx, "example_tube", []byte("Hello World"), beanstalk.PutParams{
-	Priority: 1024,
-	Delay:    2 * time.Second,
-	TTR:      1 * time.Minute,
-}
-```
-
-A ConsumerPool manages one or more client connections used specifically for
-consuming beanstalk jobs. If exports a channel on which Job types can be read.
-
-```go
-pool, err := beanstalk.NewConsumerPool([]string{"localhost:11300"}, []string{"example_tube"}, beanstalk.Config{})
-if err != nil {
-	// handle error
-}
-defer pool.Stop()
-
-pool.Play()
-for job := range pool.C {
-	// process job
-
-	if err = job.Delete(ctx); err != nil {
-		// handle error
-	}
-}
-```
-
-Alternatively, instead of leveraging the exported channel it is possible to
-provide a handler function that is called for every reserved beanstalk job by
-calling the Receive method on ConsumerPool.
-
-```go
-pool.Play()
-pool.Receive(ctx, func(ctx context.Context, job *beanstalk.Job) {
-	// process job
-
-	if err = job.Delete(ctx); err != nil {
-		// handle error
-	}
-})
-```
-
-In the above examples the beanstalk server was referenced by way of the
-host:port notation. This package also supports URI formats like beanstalk:// for
-a plaintext connection, and beanstalks:// or tls:// for encrypted connections.
