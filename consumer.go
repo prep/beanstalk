@@ -134,7 +134,7 @@ func (consumer *Consumer) reserveJobs(ctx context.Context, conn *Conn) error {
 
 			// Release the job and stop if the context was cancelled.
 			case <-ctx.Done():
-				if err = job.Release(ctx); err != nil {
+				if err = job.Release(context.Background()); err != nil {
 					consumer.config.ErrorFunc(err, "Unable to release job after context was cancelled")
 				}
 
