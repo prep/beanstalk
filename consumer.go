@@ -126,7 +126,7 @@ func (consumer *Consumer) reserveJobs(ctx context.Context, conn *Conn) error {
 		}
 
 		// Attempt to reserve a job.
-		if job, err = conn.ReserveWithTimeout(ctx, 0); job != nil {
+		if job, err = conn.reserveWithTimeout(ctx, 0); job != nil {
 			select {
 			// Return the job to the worker and wait for another reserve request.
 			case jobC <- job:

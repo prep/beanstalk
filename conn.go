@@ -84,7 +84,7 @@ func (conn *Conn) String() string {
 	return conn.URI + " (local=" + conn.conn.LocalAddr().String() + ")"
 }
 
-func (conn *Conn) command(ctx context.Context, format string, params ...interface{}) (uint64, []byte, error) {
+func (conn *Conn) command(_ context.Context, format string, params ...interface{}) (uint64, []byte, error) {
 	// Write a command and read the response.
 	id, body, err := func() (uint64, []byte, error) {
 		// Detect network problems early by setting a deadline.
@@ -385,6 +385,10 @@ func (conn *Conn) ReserveWithTimeout(ctx context.Context, timeout time.Duration)
 	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/Conn.ReserveWithTimeout")
 	defer span.End()
 
+	return conn.reserveWithTimeout(ctx, timeout)
+}
+
+func (conn *Conn) reserveWithTimeout(ctx context.Context, timeout time.Duration) (*Job, error) {
 	return conn.reserve(ctx, "reserve-with-timeout %d", timeout/time.Second)
 }
 
