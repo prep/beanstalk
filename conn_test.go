@@ -611,4 +611,86 @@ func TestConn(t *testing.T) {
 			}
 		})
 	})
+
+	t.Run("PeekDelayed", func(t *testing.T) {
+		server.HandleFunc(func(line Line) string {
+			switch {
+			case line.At(1, "use events"):
+				return "USING events"
+			case line.At(2, "peek-delayed"):
+				return "FOUND 1 11\nHello world"
+			case line.At(3, "stats-job 1"):
+				return "OK 153\n---\nid: 1\ntube: default\nstate: delayed\npri: 1024\nage: 39\ndelay: 120\nttr: 60\ntime-left: 80\nfile: 6\nreserves: 1\ntimeouts: 4\nreleases: 5\nburies: 2\nkicks: 7\n"
+			default:
+				t.Fatalf("Unexpected client request at line %d: %s", line.lineno, line.line)
+			}
+
+			return ""
+		})
+
+		job, err := conn.PeekDelayed(ctx, "events")
+		switch {
+		case err != nil:
+			t.Fatalf("Error picking delayed job: %s", err)
+		case job == nil:
+			t.Fatal("Expected job, but got nothing")
+
+		// Validate the basic attributes.
+		case job.ID != 1:
+			t.Fatalf("Unexpected job ID. Expected: 1, actual: %d", job.ID)
+		case !bytes.Equal(job.Body, []byte(`Hello world`)):
+			t.Fatalf("Expected job body to be \"Hello world\", but got %q", string(job.Body))
+
+		// Validate the Stats.
+		case job.Stats.Tube != "default":
+			t.Fatalf("Expected job tube default, but got %s", job.Stats.Tube)
+		case job.Stats.State != "delayed":
+			t.Fatalf("Expected job state delayed, but got %s", job.Stats.State)
+		case job.Stats.Age != 39*time.Second:
+			t.Fatalf("Expected job age to be 39s, but got %s", job.Stats.Age)
+		case job.Stats.TimeLeft != 80 * time.Second:
+			t.Fatalf("Expected job time left to be 80s, but got %s", job.Stats.TimeLeft)
+		case job.Stats.File != 6:
+			t.Fatalf("Expected job binfile number to be 6, but got %d", job.Stats.File)
+		case job.Stats.Reserves != 1:
+			t.Fatalf("Expected job reserved to be 1, but got %d", job.Stats.Reserves)
+		case job.Stats.Timeouts != 4:
+			t.Fatalf("Expected job timeouts to be 4, but got %d", job.Stats.Timeouts)
+		case job.Stats.Releases != 5:
+			t.Fatalf("Expected job release to be 5, but got %d", job.Stats.Releases)
+		case job.Stats.Buries != 2:
+			t.Fatalf("Expected job buries to be 2, but got %d", job.Stats.Buries)
+		case job.Stats.Kicks != 7:
+			t.Fatalf("Expected job kicks to be 7, but got %d", job.Stats.Kicks)
+
+		// Validate the PutParams.
+		case job.Stats.PutParams.Priority != 1024:
+			t.Fatalf("Expected job priority to be 1024, but got %d", job.Stats.PutParams.Priority)
+		case job.Stats.PutParams.Delay != 120*time.Second:
+			t.Fatalf("Expected job TTR to be 120s, but got %s", job.Stats.PutParams.Delay)
+		case job.Stats.PutParams.TTR != 60*time.Second:
+			t.Fatalf("Expected job TTR to be 60s, but got %s", job.Stats.PutParams.TTR)
+		}
+
+		t.Run("JobNotFound", func(t *testing.T) {
+			server.HandleFunc(func(line Line) string {
+				switch {
+				case line.At(1, "peek-delayed"):
+					return "NOT_FOUND"
+				default:
+					t.Fatalf("Unexpected client request at line %d: %s", line.lineno, line.line)
+				}
+
+				return ""
+			})
+
+			job, err := conn.PeekDelayed(ctx, "events")
+			switch {
+			case err != nil:
+				t.Fatalf("Error picking delayed job: %s", err)
+			case job != nil:
+				t.Fatalf("Expected job not found, but got something: %+v", job)
+			}
+		})
+	})
 }
