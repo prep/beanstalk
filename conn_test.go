@@ -611,4 +611,42 @@ func TestConn(t *testing.T) {
 			}
 		})
 	})
+
+	t.Run("kickJob", func(t *testing.T) {
+		server.HandleFunc(func(line Line) string {
+			switch {
+			case line.At(1, "kick-job 1"):
+				return "KICKED"
+			default:
+				t.Fatalf("Unexpected client request at line %d: %s", line.lineno, line.line)
+			}
+
+			return ""
+		})
+
+		if err := conn.kickJob(ctx, &Job{ID: 1}); err != nil {
+			t.Fatalf("Error kicking job: %s", err)
+		}
+
+		// NotFound tests what happens when the NOT_FOUND error is returned.
+		t.Run("JobNotFound", func(t *testing.T) {
+			server.HandleFunc(func(line Line) string {
+				switch {
+				case line.At(1, "kick-job 1"):
+					return "NOT_FOUND"
+				default:
+					t.Fatalf("Unexpected client request at line %d: %s", line.lineno, line.line)
+				}
+
+				return ""
+			})
+
+			err := conn.kickJob(ctx, &Job{ID: 1})
+			switch {
+			case err == ErrNotFound:
+			case err != nil:
+				t.Fatalf("Error kicking job: %s", err)
+			}
+		})
+	})
 }
