@@ -612,12 +612,55 @@ func TestConn(t *testing.T) {
 		})
 	})
 
-	t.Run("KickJob", func(t *testing.T) {
+	t.Run("Kick", func(t *testing.T) {
 		server.HandleFunc(func(line Line) string {
 			switch {
 			case line.At(1, "use default"):
 				return "USING default"
-			case line.At(2, "kick-job 1"):
+			case line.At(2, "kick 10"):
+				return "KICKED 10"
+			default:
+				t.Fatalf("Unexpected client request at line %d: %s", line.lineno, line.line)
+			}
+
+			return ""
+		})
+
+		count, err := conn.Kick(ctx, "default", 10)
+		if err != nil {
+			t.Fatalf("Error kicking jobs: %s", err)
+		}
+
+		if count != 10 {
+			t.Fatalf("Unexpected number of kicked jobs, expected %d, actual %d", 10, count)
+		}
+
+		t.Run("NoBuriedJobs", func(t *testing.T) {
+			server.HandleFunc(func(line Line) string {
+				switch {
+				case line.At(1, "kick 10"):
+					return "KICKED 0"
+				default:
+					t.Fatalf("Unexpected client request at line %d: %s", line.lineno, line.line)
+				}
+
+				return ""
+			})
+
+			count, err := conn.Kick(ctx, "default", 10)
+			switch {
+			case err != nil:
+				t.Fatalf("Error kicking job: %s", err)
+			case count != 0:
+				t.Fatalf("Unexpected number of kicked jobs, expected %d, actual %d", 0, count)
+			}
+		})
+	})
+
+	t.Run("KickJob", func(t *testing.T) {
+		server.HandleFunc(func(line Line) string {
+			switch {
+			case line.At(1, "kick-job 1"):
 				return "KICKED"
 			default:
 				t.Fatalf("Unexpected client request at line %d: %s", line.lineno, line.line)
