@@ -612,10 +612,12 @@ func TestConn(t *testing.T) {
 		})
 	})
 
-	t.Run("kickJob", func(t *testing.T) {
+	t.Run("KickJob", func(t *testing.T) {
 		server.HandleFunc(func(line Line) string {
 			switch {
-			case line.At(1, "kick-job 1"):
+			case line.At(1, "use default"):
+				return "USING default"
+			case line.At(2, "kick-job 1"):
 				return "KICKED"
 			default:
 				t.Fatalf("Unexpected client request at line %d: %s", line.lineno, line.line)
@@ -624,7 +626,7 @@ func TestConn(t *testing.T) {
 			return ""
 		})
 
-		if err := conn.kickJob(ctx, &Job{ID: 1}); err != nil {
+		if err := conn.KickJob(ctx, "default", 1); err != nil {
 			t.Fatalf("Error kicking job: %s", err)
 		}
 
@@ -641,7 +643,7 @@ func TestConn(t *testing.T) {
 				return ""
 			})
 
-			err := conn.kickJob(ctx, &Job{ID: 1})
+			err := conn.KickJob(ctx, "default", 1)
 			switch {
 			case err == ErrNotFound:
 			case err != nil:

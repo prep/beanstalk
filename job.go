@@ -107,5 +107,5 @@ func (job *Job) Kick(ctx context.Context) error {
 		return ErrJobFinished
 	}
 
-	return job.conn.kickJob(ctx, job)
+	return job.conn.KickJob(ctx, job.Stats.Tube, job.ID)
 }
