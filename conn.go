@@ -367,6 +367,41 @@ func (conn *Conn) PeekBuried(ctx context.Context, tube string) (*Job, error) {
 	return job, nil
 }
 
+// PeekDelayed peeks at a delayed job on the specified tube and returns the
+// job. If there are no jobs to peek at, this function will return without a
+// job or error.
+func (conn *Conn) PeekDelayed(ctx context.Context, tube string) (*Job, error) {
+	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/Conn.PeekDelayed")
+	defer span.End()
+
+	conn.mu.Lock()
+	defer conn.mu.Unlock()
+
+	// If the tube is different than the last time, switch tubes.
+	if tube != conn.lastTube {
+		if _, _, err := conn.command(ctx, "use %s", tube); err != nil {
+			return nil, err
+		}
+
+		conn.lastTube = tube
+	}
+
+	id, body, err := conn.command(ctx, "peek-delayed")
+	switch {
+	case err == ErrNotFound:
+		return nil, nil
+	case err != nil:
+		return nil, err
+	}
+
+	job := &Job{ID: id, Body: body, conn: conn}
+	if err = conn.statsJob(ctx, job); err != nil {
+		return nil, err
+	}
+
+	return job, nil
+}
+
 // Put a job in the specified tube.
 func (conn *Conn) Put(ctx context.Context, tube string, body []byte, params PutParams) (uint64, error) {
 	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/Conn.Put")
