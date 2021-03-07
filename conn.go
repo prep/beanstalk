@@ -261,22 +261,24 @@ func (conn *Conn) Kick(ctx context.Context, tube string, bound int) (int64, erro
 	return int64(count), nil
 }
 
-// KickJob kicks the job with the provided ID in the specified tube. This function returns
-// an error if kicking fails.
-func (conn *Conn) KickJob(ctx context.Context, tube string, jobID uint64) error {
-	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/Conn.KickJob")
+func (conn *Conn) kick(ctx context.Context, job *Job) error {
+	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/Conn.kick")
 	defer span.End()
 
+	if job == nil {
+		return ErrNotFound
+	}
+
 	// If the tube is different than the last time, switch tubes.
-	if tube != conn.lastTube {
-		if _, _, err := conn.command(ctx, "use %s", tube); err != nil {
+	if job.Stats.Tube != conn.lastTube {
+		if _, _, err := conn.command(ctx, "use %s", job.Stats.Tube); err != nil {
 			return err
 		}
 
-		conn.lastTube = tube
+		conn.lastTube = job.Stats.Tube
 	}
 
-	_, _, err := conn.lcommand(ctx, "kick-job %d", jobID)
+	_, _, err := conn.lcommand(ctx, "kick-job %d", job.ID)
 	return err
 }
 

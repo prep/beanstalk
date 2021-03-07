@@ -657,7 +657,7 @@ func TestConn(t *testing.T) {
 		})
 	})
 
-	t.Run("KickJob", func(t *testing.T) {
+	t.Run("kick", func(t *testing.T) {
 		server.HandleFunc(func(line Line) string {
 			switch {
 			case line.At(1, "kick-job 1"):
@@ -669,7 +669,10 @@ func TestConn(t *testing.T) {
 			return ""
 		})
 
-		if err := conn.KickJob(ctx, "default", 1); err != nil {
+		job := Job{ID: 1}
+		job.Stats.Tube = "default"
+
+		if err := conn.kick(ctx, &job); err != nil {
 			t.Fatalf("Error kicking job: %s", err)
 		}
 
@@ -686,7 +689,10 @@ func TestConn(t *testing.T) {
 				return ""
 			})
 
-			err := conn.KickJob(ctx, "default", 1)
+			job := Job{ID: 1}
+			job.Stats.Tube = "default"
+
+			err := conn.kick(ctx, &job)
 			switch {
 			case err == ErrNotFound:
 			case err != nil:
