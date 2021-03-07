@@ -277,11 +277,7 @@ func (conn *Conn) KickJob(ctx context.Context, tube string, jobID uint64) error 
 	}
 
 	_, _, err := conn.lcommand(ctx, "kick-job %d", jobID)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return err
 }
 
 // ListTubes returns a list of available tubes.
