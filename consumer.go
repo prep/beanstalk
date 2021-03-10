@@ -23,10 +23,12 @@ func NewConsumer(uris []string, tubes []string, config Config) (*Consumer, error
 		return nil, err
 	}
 
+	config = config.normalize()
+
 	return &Consumer{
 		uris:     uris,
 		tubes:    tubes,
-		config:   config.normalize(),
+		config:   config,
 		reserveC: make(chan chan *Job, config.NumGoroutines),
 	}, nil
 }
