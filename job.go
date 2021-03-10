@@ -100,3 +100,12 @@ func (job *Job) TouchAfter() time.Duration {
 
 	return time.Until(job.ReservedAt.Add(job.Stats.TimeLeft))
 }
+
+// Kick moves the job into the ready queue.
+func (job *Job) Kick(ctx context.Context) error {
+	if job.conn == nil {
+		return ErrJobFinished
+	}
+
+	return job.conn.kick(ctx, job)
+}

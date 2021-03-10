@@ -161,16 +161,19 @@ func (conn *Conn) command(_ context.Context, format string, params ...interface{
 			return id, body[:size], nil
 
 		case "KICKED":
-			if len(parts) != 2 {
+			switch len(parts) {
+			case 1: // response of kick-job: KICKED
+				return 1, nil, nil
+			case 2: // response of kick: KICKED <count>
+				count, err := strconv.ParseUint(parts[1], 10, 64)
+				if err != nil {
+					return 0, nil, err
+				}
+
+				return count, nil, nil
+			default:
 				return 0, nil, ErrUnexpected
 			}
-
-			count, err := strconv.ParseUint(parts[1], 10, 64)
-			if err != nil {
-				return 0, nil, err
-			}
-
-			return count, nil, nil
 
 		case "DELETED", "RELEASED", "TOUCHED", "USING", "WATCHING":
 			return 0, nil, nil
@@ -258,6 +261,27 @@ func (conn *Conn) Kick(ctx context.Context, tube string, bound int) (int64, erro
 	}
 
 	return int64(count), nil
+}
+
+func (conn *Conn) kick(ctx context.Context, job *Job) error {
+	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/Conn.kick")
+	defer span.End()
+
+	if job == nil {
+		return ErrNotFound
+	}
+
+	// If the tube is different than the last time, switch tubes.
+	if job.Stats.Tube != conn.lastTube {
+		if _, _, err := conn.command(ctx, "use %s", job.Stats.Tube); err != nil {
+			return err
+		}
+
+		conn.lastTube = job.Stats.Tube
+	}
+
+	_, _, err := conn.lcommand(ctx, "kick-job %d", job.ID)
+	return err
 }
 
 // ListTubes returns a list of available tubes.
