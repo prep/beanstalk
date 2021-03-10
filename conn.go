@@ -47,6 +47,8 @@ func Dial(uri string, config Config) (*Conn, error) {
 		return nil, err
 	}
 
+	config = config.normalize()
+
 	// Dial into the beanstalk server.
 	var netConn net.Conn
 	if isTLS {
@@ -69,7 +71,7 @@ func Dial(uri string, config Config) (*Conn, error) {
 
 	return &Conn{
 		URI:    uri,
-		config: config.normalize(),
+		config: config,
 		conn:   netConn,
 		text:   textproto.NewConn(netConn),
 	}, nil
