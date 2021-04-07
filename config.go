@@ -16,6 +16,11 @@ type Config struct {
 	//
 	// The default is to spin up 10 goroutines.
 	NumGoroutines int
+	// ReserveBuried changes the behaviour of the consumer from reserving ready
+	// jobs to reserving buried jobs.
+	ReserveBuried bool
+	// ReserveBuriedTube
+	ReserveBuriedTube string
 	// ConnTimeout configures the read and write timeout of the connection. This
 	// can be overridden by a context deadline if its value is lower.
 	//
@@ -48,6 +53,9 @@ func (config Config) normalize() Config {
 	}
 	if config.NumGoroutines < 1 {
 		config.NumGoroutines = 10
+	}
+	if config.ReserveBuried && config.ReserveBuriedTube == "" {
+		config.ReserveBuriedTube = "default"
 	}
 	if config.ConnTimeout < 0 {
 		config.ConnTimeout = 0

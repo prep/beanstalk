@@ -453,6 +453,49 @@ func (conn *Conn) reserveWithTimeout(ctx context.Context, timeout time.Duration)
 	return conn.reserve(ctx, "reserve-with-timeout %d", timeout/time.Second)
 }
 
+func (conn *Conn) reserveBuried(ctx context.Context, tube string) (*Job, error) {
+	conn.mu.Lock()
+	defer conn.mu.Unlock()
+
+	// If the tube is different than the last time, switch tubes.
+	if tube != conn.lastTube {
+		if _, _, err := conn.command(ctx, "use %s", tube); err != nil {
+			return nil, err
+		}
+
+		conn.lastTube = tube
+	}
+
+	// Peek a buried job.
+	id, _, err := conn.command(ctx, "peek-buried")
+	switch {
+	case err == ErrNotFound:
+		return nil, nil
+	case err != nil:
+		return nil, err
+	}
+
+	// Reserve the buried job.
+	id, body, err := conn.command(ctx, "reserve-job %d", id)
+	switch {
+	case err == ErrDeadlineSoon:
+		return nil, nil
+	case err == ErrNotFound:
+		return nil, nil
+	case err == ErrTimedOut:
+		return nil, nil
+	case err != nil:
+		return nil, err
+	}
+
+	job := &Job{ID: id, Body: body, conn: conn}
+	if err = conn.statsJob(ctx, job); err != nil {
+		return nil, err
+	}
+
+	return job, nil
+}
+
 // reserve a job.
 func (conn *Conn) reserve(ctx context.Context, format string, params ...interface{}) (*Job, error) {
 	conn.mu.Lock()

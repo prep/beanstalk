@@ -103,6 +103,15 @@ func (consumer *Consumer) watchTubes(ctx context.Context, conn *Conn) error {
 	return nil
 }
 
+// reserve a job.
+func (consumer *Consumer) reserve(ctx context.Context, conn *Conn) (*Job, error) {
+	if consumer.config.ReserveBuried {
+		return conn.reserveBuried(ctx, consumer.config.ReserveBuriedTube)
+	}
+
+	return conn.reserveWithTimeout(ctx, 0)
+}
+
 // reserveJobs is responsible for reserving jobs on demand and pass them back
 // to the worker method that will call its worker function with it.
 func (consumer *Consumer) reserveJobs(ctx context.Context, conn *Conn) error {
@@ -128,7 +137,7 @@ func (consumer *Consumer) reserveJobs(ctx context.Context, conn *Conn) error {
 		}
 
 		// Attempt to reserve a job.
-		if job, err = conn.reserveWithTimeout(ctx, 0); job != nil {
+		if job, err = consumer.reserve(ctx, conn); job != nil {
 			select {
 			// Return the job to the worker and wait for another reserve request.
 			case jobC <- job:
