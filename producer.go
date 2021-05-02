@@ -2,6 +2,7 @@ package beanstalk
 
 import (
 	"context"
+	"errors"
 	"math/rand"
 	"sync"
 
@@ -75,6 +76,11 @@ func (pool *Producer) Put(ctx context.Context, tube string, body []byte, params 
 	// Cycle randomly over the producers.
 	for _, num := range rand.Perm(len(pool.producers)) {
 		id, err := pool.producers[num].Put(ctx, tube, body, params)
+		// If the job is too big, assume it'll be too big for the other
+		// beanstalk producers as well and return the error.
+		if errors.Is(err, ErrTooBig) {
+			return 0, err
+		}
 		if err != nil {
 			continue
 		}
@@ -136,7 +142,10 @@ func (producer *producer) Put(ctx context.Context, tube string, body []byte, par
 	// Insert the job. If this fails, mark the connection as disconnected and
 	// report the error back to setConnection.
 	id, err := producer.conn.Put(ctx, tube, body, params)
-	if err != nil {
+	switch {
+	// ErrTooBig is a recoverable error.
+	case errors.Is(err, ErrTooBig):
+	case err != nil:
 		producer.conn = nil
 		producer.errC <- err
 	}
