@@ -3,6 +3,7 @@ package beanstalk
 import (
 	"bytes"
 	"context"
+	"errors"
 	"net"
 	"net/textproto"
 	"sync"
@@ -140,7 +141,7 @@ func TestConn(t *testing.T) {
 	defer server.Close()
 
 	var conn *Conn
-	var ctx = context.Background()
+	ctx := context.Background()
 
 	// Dial the beanstalk server and set up a client connection.
 	t.Run("Dial", func(t *testing.T) {
@@ -184,7 +185,7 @@ func TestConn(t *testing.T) {
 
 			err := conn.bury(ctx, &Job{ID: 2}, 11)
 			switch {
-			case err == ErrNotFound:
+			case errors.Is(err, ErrNotFound):
 			case err != nil:
 				t.Fatalf("Error burying job: %s", err)
 			}
@@ -223,7 +224,7 @@ func TestConn(t *testing.T) {
 
 			err := conn.delete(ctx, &Job{ID: 4})
 			switch {
-			case err == ErrNotFound:
+			case errors.Is(err, ErrNotFound):
 			case err != nil:
 				t.Fatalf("Error deleting job: %s", err)
 			}
@@ -259,7 +260,7 @@ func TestConn(t *testing.T) {
 
 			err := conn.Ignore(ctx, "bar")
 			switch {
-			case err == ErrNotIgnored:
+			case errors.Is(err, ErrNotIgnored):
 			case err != nil:
 				t.Fatalf("Error ignoring tube: %s", err)
 			}
@@ -373,9 +374,9 @@ func TestConn(t *testing.T) {
 				return ""
 			})
 
-			err := conn.release(ctx, &Job{ID: 9}, 13, 21*time.Second)
+			err = conn.release(ctx, &Job{ID: 9}, 13, 21*time.Second)
 			switch {
-			case err == ErrBuried:
+			case errors.Is(err, ErrBuried):
 			case err != nil:
 				t.Fatalf("Expected the ErrBuried error, but got %s", err)
 			}
@@ -394,9 +395,9 @@ func TestConn(t *testing.T) {
 				return ""
 			})
 
-			err := conn.release(ctx, &Job{ID: 10}, 14, 22*time.Second)
+			err = conn.release(ctx, &Job{ID: 10}, 14, 22*time.Second)
 			switch {
-			case err == ErrNotFound:
+			case errors.Is(err, ErrNotFound):
 			case err != nil:
 				t.Fatalf("Expected the ErrNotFound error, but got %s", err)
 			}
@@ -574,9 +575,9 @@ func TestConn(t *testing.T) {
 				return ""
 			})
 
-			err := conn.touch(ctx, &Job{ID: 14})
+			err = conn.touch(ctx, &Job{ID: 14})
 			switch {
-			case err == ErrNotFound:
+			case errors.Is(err, ErrNotFound):
 			case err != nil:
 				t.Fatalf("Expected the ErrNotFound error, but got %s", err)
 			}
@@ -605,7 +606,7 @@ func TestConn(t *testing.T) {
 		t.Run("ErrTubeTooLong", func(t *testing.T) {
 			err := conn.Watch(ctx, string(make([]byte, 201)))
 			switch {
-			case err == ErrTubeTooLong:
+			case errors.Is(err, ErrTubeTooLong):
 			case err != nil:
 				t.Fatalf("Expected the ErrTubeTooLong error, but got %s", err)
 			}
@@ -694,7 +695,7 @@ func TestConn(t *testing.T) {
 
 			err := conn.kick(ctx, &job)
 			switch {
-			case err == ErrNotFound:
+			case errors.Is(err, ErrNotFound):
 			case err != nil:
 				t.Fatalf("Error kicking job: %s", err)
 			}
@@ -737,7 +738,7 @@ func TestConn(t *testing.T) {
 			t.Fatalf("Expected job state delayed, but got %s", job.Stats.State)
 		case job.Stats.Age != 39*time.Second:
 			t.Fatalf("Expected job age to be 39s, but got %s", job.Stats.Age)
-		case job.Stats.TimeLeft != 80 * time.Second:
+		case job.Stats.TimeLeft != 80*time.Second:
 			t.Fatalf("Expected job time left to be 80s, but got %s", job.Stats.TimeLeft)
 		case job.Stats.File != 6:
 			t.Fatalf("Expected job binfile number to be 6, but got %d", job.Stats.File)

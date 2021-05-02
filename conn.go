@@ -197,7 +197,7 @@ func (conn *Conn) command(_ context.Context, format string, params ...interface{
 	}()
 
 	// An io.EOF means the connection got disconnected.
-	if err == io.EOF {
+	if errors.Is(err, io.EOF) {
 		return 0, nil, ErrDisconnected
 	}
 
@@ -216,7 +216,7 @@ func (conn *Conn) bury(ctx context.Context, job *Job, priority uint32) error {
 	defer span.End()
 
 	_, _, err := conn.lcommand(ctx, "bury %d %d", job.ID, priority)
-	if err == ErrBuried {
+	if errors.Is(err, ErrBuried) {
 		return nil
 	}
 
@@ -353,7 +353,7 @@ func (conn *Conn) PeekBuried(ctx context.Context, tube string) (*Job, error) {
 
 	id, body, err := conn.command(ctx, "peek-buried")
 	switch {
-	case err == ErrNotFound:
+	case errors.Is(err, ErrNotFound):
 		return nil, nil
 	case err != nil:
 		return nil, err
@@ -388,7 +388,7 @@ func (conn *Conn) PeekDelayed(ctx context.Context, tube string) (*Job, error) {
 
 	id, body, err := conn.command(ctx, "peek-delayed")
 	switch {
-	case err == ErrNotFound:
+	case errors.Is(err, ErrNotFound):
 		return nil, nil
 	case err != nil:
 		return nil, err
@@ -460,11 +460,11 @@ func (conn *Conn) reserve(ctx context.Context, format string, params ...interfac
 
 	id, body, err := conn.command(ctx, format, params...)
 	switch {
-	case err == ErrDeadlineSoon:
+	case errors.Is(err, ErrDeadlineSoon):
 		return nil, nil
-	case err == ErrNotFound:
+	case errors.Is(err, ErrNotFound):
 		return nil, nil
-	case err == ErrTimedOut:
+	case errors.Is(err, ErrTimedOut):
 		return nil, nil
 	case err != nil:
 		return nil, err
@@ -478,7 +478,7 @@ func (conn *Conn) reserve(ctx context.Context, format string, params ...interfac
 	// Either way, the job that was reserved is already lost.
 	err = conn.statsJob(ctx, job)
 	switch {
-	case err == ErrNotFound:
+	case errors.Is(err, ErrNotFound):
 		return nil, nil
 	case err != nil:
 		return nil, err

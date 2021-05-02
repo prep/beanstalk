@@ -2,6 +2,7 @@ package beanstalk
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"testing"
@@ -106,11 +107,9 @@ func TestProducer(t *testing.T) {
 			})
 
 			_, err = producer.Put(ctx, "foobar", []byte("Hello World"), params)
-			if err != ErrDisconnected {
+			if !errors.Is(err, ErrDisconnected) {
 				t.Fatalf("Expected JOB_TOO_BIG error, but got %s", err)
 			}
-
-			// server.HandleFunc(nil)
 		})
 	})
 
@@ -231,9 +230,9 @@ func TestProducerPool(t *testing.T) {
 	t.Run("PutWithAllServersDisconnected", func(t *testing.T) {
 		servers[2].Close()
 
-		_, err := producer.Put(context.Background(), "foobar", []byte("Hello World"), params)
+		_, err = producer.Put(context.Background(), "foobar", []byte("Hello World"), params)
 		switch {
-		case err == ErrDisconnected:
+		case errors.Is(err, ErrDisconnected):
 		case err != nil:
 			t.Fatalf("Error inserting a new job: %s", err)
 		}

@@ -143,7 +143,7 @@ func maintainConn(ctx context.Context, uri string, config Config, handler connHa
 		}
 
 		// Hand over the connection.
-		if err = handler.handle(ctx, conn); err != nil && err != ErrDisconnected {
+		if err = handler.handle(ctx, conn); err != nil && !errors.Is(err, ErrDisconnected) {
 			config.ErrorFunc(err, fmt.Sprintf("Disconnected from beanstalk server %s", conn))
 		} else {
 			config.InfoFunc(fmt.Sprintf("Disconnected from beanstalk server %s", conn))

@@ -18,7 +18,7 @@ type Consumer struct {
 }
 
 // NewConsumer returns a new Consumer.
-func NewConsumer(uris []string, tubes []string, config Config) (*Consumer, error) {
+func NewConsumer(uris, tubes []string, config Config) (*Consumer, error) {
 	if err := validURIs(uris); err != nil {
 		return nil, err
 	}
@@ -89,14 +89,14 @@ func (consumer *Consumer) watchTubes(ctx context.Context, conn *Conn) error {
 	// Watch all the requested tubes.
 	for _, tube := range consumer.tubes {
 		if err := conn.Watch(ctx, tube); err != nil {
-			return fmt.Errorf("error watching tube: %s: %s", tube, err)
+			return fmt.Errorf("error watching tube: %s: %w", tube, err)
 		}
 	}
 
 	// Ignore the default tube, unless it was explicitly requested.
 	if !includes(consumer.tubes, "default") {
 		if err := conn.Ignore(ctx, "default"); err != nil {
-			return fmt.Errorf("error ignoring default tube: %s", err)
+			return fmt.Errorf("error ignoring default tube: %w", err)
 		}
 	}
 
