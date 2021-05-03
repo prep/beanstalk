@@ -91,9 +91,8 @@ func TestProducer(t *testing.T) {
 			t.Fatalf("Expected job ID 5, but got %d", id)
 		}
 
-		// Check if ErrDisconnected is returned when an error occurs while putting
-		// a job into a tube.
-		t.Run("WithError", func(t *testing.T) {
+		// Check if ErrTooBig is returned when a job is too big.
+		t.Run("ErrTooBig", func(t *testing.T) {
 			server.HandleFunc(func(line Line) string {
 				switch {
 				case line.At(1, "put 1024 10 60 11"):
@@ -107,8 +106,29 @@ func TestProducer(t *testing.T) {
 			})
 
 			_, err = producer.Put(ctx, "foobar", []byte("Hello World"), params)
-			if !errors.Is(err, ErrDisconnected) {
+			if !errors.Is(err, ErrTooBig) {
 				t.Fatalf("Expected JOB_TOO_BIG error, but got %s", err)
+			}
+		})
+
+		// Check if ErrDisconnected is returned when an error occurs while putting
+		// a job into a tube.
+		t.Run("WithError", func(t *testing.T) {
+			server.HandleFunc(func(line Line) string {
+				switch {
+				case line.At(1, "put 1024 10 60 11"):
+				case line.At(2, "Hello World"):
+					return "FOOBAR"
+				default:
+					t.Fatalf("Unexpected client request at line %d: %s", line.lineno, line.line)
+				}
+
+				return ""
+			})
+
+			_, err = producer.Put(ctx, "foobar", []byte("Hello World"), params)
+			if !errors.Is(err, ErrDisconnected) {
+				t.Fatalf("Expected %v error, but got %s", ErrDisconnected, err)
 			}
 		})
 	})
