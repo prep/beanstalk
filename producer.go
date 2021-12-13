@@ -18,11 +18,17 @@ type Producer struct {
 	mu        sync.RWMutex
 }
 
-// NewProducer returns a new Producer.
+// NewProducer returns a new Producer or returns an error if the uris is not valid or empty.
 func NewProducer(uris []string, config Config) (*Producer, error) {
-	if err := validURIs(uris); err != nil {
+	if err := ValidURIs(uris); err != nil {
 		return nil, err
 	}
+
+	return NewProducerWithoutURIValidation(uris, config), nil
+}
+
+// NewProducerWithoutURIValidation returns a new Producer.
+func NewProducerWithoutURIValidation(uris []string, config Config) *Producer {
 
 	// Create a context that can be cancelled to stop the producers.
 	ctx, cancel := context.WithCancel(context.Background())
@@ -38,7 +44,7 @@ func NewProducer(uris []string, config Config) (*Producer, error) {
 		pool.producers = append(pool.producers, producer)
 	}
 
-	return pool, nil
+	return pool
 }
 
 // Stop this producer.

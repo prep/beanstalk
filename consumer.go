@@ -17,12 +17,17 @@ type Consumer struct {
 	wg       sync.WaitGroup
 }
 
-// NewConsumer returns a new Consumer.
+// NewConsumer returns a new Consumer or returns an error if the uris is not valid or empty.
 func NewConsumer(uris, tubes []string, config Config) (*Consumer, error) {
-	if err := validURIs(uris); err != nil {
+	if err := ValidURIs(uris); err != nil {
 		return nil, err
 	}
 
+	return NewConsumerWithoutURIValidation(uris, tubes, config), nil
+}
+
+// NewConsumerWithoutURIValidation returns a new Consumer
+func NewConsumerWithoutURIValidation(uris, tubes []string, config Config) *Consumer {
 	config = config.normalize()
 
 	return &Consumer{
@@ -30,7 +35,7 @@ func NewConsumer(uris, tubes []string, config Config) (*Consumer, error) {
 		tubes:    tubes,
 		config:   config,
 		reserveC: make(chan chan *Job, config.NumGoroutines),
-	}, nil
+	}
 }
 
 // Receive calls fn for each job it can reserve.
