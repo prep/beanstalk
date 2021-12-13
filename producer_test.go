@@ -70,7 +70,6 @@ func TestProducer(t *testing.T) {
 				t.Fatalf("Unable to create a new producer: %s", err)
 			}
 			defer p.Stop()
-			time.Sleep(10 * time.Millisecond)
 		})
 	})
 
