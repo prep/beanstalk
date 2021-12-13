@@ -20,15 +20,11 @@ type Producer struct {
 
 // NewProducer returns a new Producer or returns an error if the uris is not valid or empty.
 func NewProducer(uris []string, config Config) (*Producer, error) {
-	if err := ValidURIs(uris); err != nil {
-		return nil, err
+	if !config.IgnoreURIValidation {
+		if err := ValidURIs(uris); err != nil {
+			return nil, err
+		}
 	}
-
-	return NewProducerWithoutURIValidation(uris, config), nil
-}
-
-// NewProducerWithoutURIValidation returns a new Producer.
-func NewProducerWithoutURIValidation(uris []string, config Config) *Producer {
 
 	// Create a context that can be cancelled to stop the producers.
 	ctx, cancel := context.WithCancel(context.Background())
@@ -44,7 +40,7 @@ func NewProducerWithoutURIValidation(uris []string, config Config) *Producer {
 		pool.producers = append(pool.producers, producer)
 	}
 
-	return pool
+	return pool, nil
 }
 
 // Stop this producer.

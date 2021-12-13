@@ -19,15 +19,12 @@ type Consumer struct {
 
 // NewConsumer returns a new Consumer or returns an error if the uris is not valid or empty.
 func NewConsumer(uris, tubes []string, config Config) (*Consumer, error) {
-	if err := ValidURIs(uris); err != nil {
-		return nil, err
+	if !config.IgnoreURIValidation {
+		if err := ValidURIs(uris); err != nil {
+			return nil, err
+		}
 	}
 
-	return NewConsumerWithoutURIValidation(uris, tubes, config), nil
-}
-
-// NewConsumerWithoutURIValidation returns a new Consumer
-func NewConsumerWithoutURIValidation(uris, tubes []string, config Config) *Consumer {
 	config = config.normalize()
 
 	return &Consumer{
@@ -35,7 +32,7 @@ func NewConsumerWithoutURIValidation(uris, tubes []string, config Config) *Consu
 		tubes:    tubes,
 		config:   config,
 		reserveC: make(chan chan *Job, config.NumGoroutines),
-	}
+	}, nil
 }
 
 // Receive calls fn for each job it can reserve.
