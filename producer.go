@@ -18,7 +18,7 @@ type Producer struct {
 	mu        sync.RWMutex
 }
 
-// NewProducer returns a new Producer or returns an error if the uris is not valid or empty.
+// NewProducer returns a new Producer
 func NewProducer(uris []string, config Config) (*Producer, error) {
 	if !config.IgnoreURIValidation {
 		if err := ValidURIs(uris); err != nil {

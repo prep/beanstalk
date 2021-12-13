@@ -17,7 +17,7 @@ type Consumer struct {
 	wg       sync.WaitGroup
 }
 
-// NewConsumer returns a new Consumer or returns an error if the uris is not valid or empty.
+// NewConsumer returns a new Consumer
 func NewConsumer(uris, tubes []string, config Config) (*Consumer, error) {
 	if !config.IgnoreURIValidation {
 		if err := ValidURIs(uris); err != nil {
