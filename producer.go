@@ -18,7 +18,7 @@ type Producer struct {
 	mu        sync.RWMutex
 }
 
-// NewProducer returns a new Producer
+// NewProducer returns a new Producer.
 func NewProducer(uris []string, config Config) (*Producer, error) {
 	if !config.IgnoreURIValidation {
 		if err := ValidURIs(uris); err != nil {
