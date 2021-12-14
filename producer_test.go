@@ -61,6 +61,16 @@ func TestProducer(t *testing.T) {
 				t.Fatalf("Producer was unable to connect")
 			}
 		})
+
+		// Test if a producer works when IgnoreURIValidation is set true and URIs are invalid
+		// connection.
+		t.Run("IgnoreURIValidation", func(t *testing.T) {
+			p, err := NewProducer([]string{"test-uri-1", "test-uri-2"}, Config{IgnoreURIValidation: true})
+			if err != nil {
+				t.Fatalf("Unable to create a new producer: %s", err)
+			}
+			defer p.Stop()
+		})
 	})
 
 	ctx := context.Background()

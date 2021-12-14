@@ -20,8 +20,10 @@ type Producer struct {
 
 // NewProducer returns a new Producer.
 func NewProducer(uris []string, config Config) (*Producer, error) {
-	if err := validURIs(uris); err != nil {
-		return nil, err
+	if !config.IgnoreURIValidation {
+		if err := ValidURIs(uris); err != nil {
+			return nil, err
+		}
 	}
 
 	// Create a context that can be cancelled to stop the producers.

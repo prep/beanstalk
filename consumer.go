@@ -19,8 +19,10 @@ type Consumer struct {
 
 // NewConsumer returns a new Consumer.
 func NewConsumer(uris, tubes []string, config Config) (*Consumer, error) {
-	if err := validURIs(uris); err != nil {
-		return nil, err
+	if !config.IgnoreURIValidation {
+		if err := ValidURIs(uris); err != nil {
+			return nil, err
+		}
 	}
 
 	config = config.normalize()

@@ -40,6 +40,8 @@ type Config struct {
 	InfoFunc func(message string)
 	// ErrorFunc is called to log error messages.
 	ErrorFunc func(err error, message string)
+	// IgnoreURIValidation skips the step of calling ValidURIs() method during initialization
+	IgnoreURIValidation bool
 }
 
 func (config Config) normalize() Config {
