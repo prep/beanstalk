@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"go.opencensus.io/stats"
+	"go.opencensus.io/tag"
 	"go.opencensus.io/trace"
 	"gopkg.in/yaml.v2"
 )
@@ -86,7 +88,8 @@ func (conn *Conn) String() string {
 	return conn.URI + " (local=" + conn.conn.LocalAddr().String() + ")"
 }
 
-func (conn *Conn) command(_ context.Context, format string, params ...interface{}) (uint64, []byte, error) {
+func (conn *Conn) command(ctx context.Context, format string, params ...interface{}) (uint64, []byte, error) {
+	start := time.Now()
 	// Write a command and read the response.
 	id, body, err := func() (uint64, []byte, error) {
 		// Detect network problems early by setting a deadline.
@@ -196,17 +199,33 @@ func (conn *Conn) command(_ context.Context, format string, params ...interface{
 		return 0, nil, ErrUnexpected
 	}()
 
+	roundtripLatency := time.Since(start)
+	ctx2 := addTagKey(ctx, tag.Insert(tagKeyCommand, strings.Fields(format)[0]))
+	stats.Record(ctx2, roundTripCommandLatencyMeasurement.M(roundtripLatency.Milliseconds()), commandCountMeasurement.M(1))
+
 	// An io.EOF means the connection got disconnected.
 	if errors.Is(err, io.EOF) {
 		return 0, nil, ErrDisconnected
+	}
+
+	if err != nil {
+		stats.Record(ctx2, commandErrorCountMeasurement.M(1))
 	}
 
 	return id, body, err
 }
 
 func (conn *Conn) lcommand(ctx context.Context, format string, params ...interface{}) (uint64, []byte, error) {
+	start := time.Now()
+
 	conn.mu.Lock()
 	defer conn.mu.Unlock()
+
+	commandQueueLatency := time.Since(start)
+	stats.Record(
+		ctx,
+		commandQueueLatencyMeasurement.M(commandQueueLatency.Milliseconds()),
+	)
 
 	return conn.command(ctx, format, params...)
 }
@@ -243,8 +262,16 @@ func (conn *Conn) Ignore(ctx context.Context, tube string) error {
 // Kick one or more jobs in the specified tube. This function returns the
 // number of jobs that were kicked.
 func (conn *Conn) Kick(ctx context.Context, tube string, bound int) (int64, error) {
+	start := time.Now()
+
 	conn.mu.Lock()
 	defer conn.mu.Unlock()
+
+	commandQueueLatency := time.Since(start)
+	stats.Record(
+		ctx,
+		commandQueueLatencyMeasurement.M(commandQueueLatency.Milliseconds()),
+	)
 
 	// If the tube is different than the last time, switch tubes.
 	if tube != conn.lastTube {
@@ -339,8 +366,16 @@ func (conn *Conn) TubeStats(ctx context.Context, tube string) (TubeStats, error)
 // job. If there are no jobs to peek at, this function will return without a
 // job or error.
 func (conn *Conn) PeekBuried(ctx context.Context, tube string) (*Job, error) {
+	start := time.Now()
+
 	conn.mu.Lock()
 	defer conn.mu.Unlock()
+
+	commandQueueLatency := time.Since(start)
+	stats.Record(
+		ctx,
+		commandQueueLatencyMeasurement.M(commandQueueLatency.Milliseconds()),
+	)
 
 	// If the tube is different than the last time, switch tubes.
 	if tube != conn.lastTube {
@@ -374,8 +409,16 @@ func (conn *Conn) PeekDelayed(ctx context.Context, tube string) (*Job, error) {
 	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/Conn.PeekDelayed")
 	defer span.End()
 
+	start := time.Now()
+
 	conn.mu.Lock()
 	defer conn.mu.Unlock()
+
+	commandQueueLatency := time.Since(start)
+	stats.Record(
+		ctx,
+		commandQueueLatencyMeasurement.M(commandQueueLatency.Milliseconds()),
+	)
 
 	// If the tube is different than the last time, switch tubes.
 	if tube != conn.lastTube {
@@ -407,8 +450,16 @@ func (conn *Conn) Put(ctx context.Context, tube string, body []byte, params PutP
 	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/Conn.Put")
 	defer span.End()
 
+	start := time.Now()
+
 	conn.mu.Lock()
 	defer conn.mu.Unlock()
+
+	commandQueueLatency := time.Since(start)
+	stats.Record(
+		ctx,
+		commandQueueLatencyMeasurement.M(commandQueueLatency.Milliseconds()),
+	)
 
 	// If the tube is different than the last time, switch tubes.
 	if tube != conn.lastTube {
@@ -455,8 +506,16 @@ func (conn *Conn) reserveWithTimeout(ctx context.Context, timeout time.Duration)
 
 // reserve a job.
 func (conn *Conn) reserve(ctx context.Context, format string, params ...interface{}) (*Job, error) {
+	start := time.Now()
+
 	conn.mu.Lock()
 	defer conn.mu.Unlock()
+
+	commandQueueLatency := time.Since(start)
+	stats.Record(
+		ctx,
+		commandQueueLatencyMeasurement.M(commandQueueLatency.Milliseconds()),
+	)
 
 	id, body, err := conn.command(ctx, format, params...)
 	switch {
