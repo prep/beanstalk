@@ -60,7 +60,7 @@ func (job *Job) Delete(ctx context.Context) error {
 		return ErrJobFinished
 	}
 
-	err := job.conn.delete(ctx, job)
+	err := job.conn.Delete(ctx, job.ID)
 	job.conn = nil
 	return err
 }
