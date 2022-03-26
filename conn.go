@@ -223,11 +223,12 @@ func (conn *Conn) bury(ctx context.Context, job *Job, priority uint32) error {
 	return err
 }
 
-func (conn *Conn) delete(ctx context.Context, job *Job) error {
-	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/Conn.delete")
+// Delete the job with the specified ID.
+func (conn *Conn) Delete(ctx context.Context, id uint64) error {
+	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/Conn.Delete")
 	defer span.End()
 
-	_, _, err := conn.lcommand(ctx, "delete %d", job.ID)
+	_, _, err := conn.lcommand(ctx, "delete %d", id)
 	return err
 }
 
@@ -269,15 +270,6 @@ func (conn *Conn) kick(ctx context.Context, job *Job) error {
 
 	if job == nil {
 		return ErrNotFound
-	}
-
-	// If the tube is different than the last time, switch tubes.
-	if job.Stats.Tube != conn.lastTube {
-		if _, _, err := conn.command(ctx, "use %s", job.Stats.Tube); err != nil {
-			return err
-		}
-
-		conn.lastTube = job.Stats.Tube
 	}
 
 	_, _, err := conn.lcommand(ctx, "kick-job %d", job.ID)

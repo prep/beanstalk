@@ -193,7 +193,7 @@ func TestConn(t *testing.T) {
 	})
 
 	// delete a job.
-	t.Run("delete", func(t *testing.T) {
+	t.Run("Delete", func(t *testing.T) {
 		server.HandleFunc(func(line Line) string {
 			switch {
 			case line.At(1, "delete 3"):
@@ -205,7 +205,7 @@ func TestConn(t *testing.T) {
 			return ""
 		})
 
-		if err := conn.delete(ctx, &Job{ID: 3}); err != nil {
+		if err := conn.Delete(ctx, 3); err != nil {
 			t.Fatalf("Error deleting job: %s", err)
 		}
 
@@ -222,7 +222,7 @@ func TestConn(t *testing.T) {
 				return ""
 			})
 
-			err := conn.delete(ctx, &Job{ID: 4})
+			err := conn.Delete(ctx, 4)
 			switch {
 			case errors.Is(err, ErrNotFound):
 			case err != nil:
@@ -356,8 +356,7 @@ func TestConn(t *testing.T) {
 		})
 
 		err := conn.release(ctx, &Job{ID: 8}, 12, 20*time.Second)
-		switch {
-		case err != nil:
+		if err != nil {
 			t.Fatalf("Error releasing job: %s", err)
 		}
 
