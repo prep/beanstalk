@@ -94,6 +94,28 @@ func (pool *Producer) Put(ctx context.Context, tube string, body []byte, params 
 	return 0, ErrDisconnected
 }
 
+// Delete the job with the specified ID.
+func (pool *Producer) Delete(ctx context.Context, id uint64) error {
+	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/Producer.Delete")
+	defer span.End()
+
+	pool.mu.RLock()
+	defer pool.mu.RUnlock()
+
+	// Cycle randomly over the producers.
+	for _, num := range rand.Perm(len(pool.producers)) {
+		err := pool.producers[num].Delete
+		if err != nil {
+			continue
+		}
+
+		return nil
+	}
+
+	// If no producer was found, all were disconnected.
+	return ErrDisconnected
+}
+
 type producer struct {
 	conn *Conn
 	errC chan error
@@ -153,4 +175,29 @@ func (producer *producer) Put(ctx context.Context, tube string, body []byte, par
 	}
 
 	return id, err
+}
+
+// Delete the job with the specified ID.
+func (producer *producer) Delete(ctx context.Context, id uint64) error {
+	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/producer.Delete")
+	defer span.End()
+
+	producer.mu.Lock()
+	defer producer.mu.Unlock()
+
+	// If this producer isn't connected, return ErrDisconnected.
+	if producer.conn == nil {
+		return ErrDisconnected
+	}
+
+	// Delete the job. If this fails, mark the connection as disconnected and
+	// report the error back to setConnection.
+	err := producer.conn.Delete(ctx, id)
+	switch {
+	case err != nil:
+		producer.conn = nil
+		producer.errC <- err
+	}
+
+	return err
 }
