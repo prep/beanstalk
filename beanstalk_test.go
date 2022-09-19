@@ -33,7 +33,7 @@ func TestParseURI(t *testing.T) {
 
 		for _, c := range cases {
 			t.Run(string(c.uriType), func(t *testing.T) {
-				address, uriType, err := ParseURI(c.uri)
+				address, uriType, err := parseURI(c.uri)
 				if err != nil {
 					t.Errorf("Unable to parse URI: %s", c.uri)
 				}
@@ -50,7 +50,7 @@ func TestParseURI(t *testing.T) {
 	})
 
 	t.Run("WithMissingScheme", func(t *testing.T) {
-		host, uriType, err := ParseURI("localhost:11300")
+		host, uriType, err := parseURI("localhost:11300")
 		switch {
 		case err != nil:
 			t.Fatalf("Error parsing URI without scheme: %s", err)
@@ -62,7 +62,7 @@ func TestParseURI(t *testing.T) {
 	})
 
 	t.Run("WithMissingPort", func(t *testing.T) {
-		host, _, err := ParseURI("beanstalk://localhost")
+		host, _, err := parseURI("beanstalk://localhost")
 		switch {
 		case err != nil:
 			t.Fatalf("Error parsing URI without port")
@@ -72,7 +72,7 @@ func TestParseURI(t *testing.T) {
 	})
 
 	t.Run("WithMissingTLSPort", func(t *testing.T) {
-		host, _, err := ParseURI("beanstalks://localhost")
+		host, _, err := parseURI("beanstalks://localhost")
 		switch {
 		case err != nil:
 			t.Fatalf("Error parsing URI without port")
@@ -82,7 +82,7 @@ func TestParseURI(t *testing.T) {
 	})
 
 	t.Run("WithInvalidScheme", func(t *testing.T) {
-		if _, _, err := ParseURI("foo://localhost:12345"); err == nil {
+		if _, _, err := parseURI("foo://localhost:12345"); err == nil {
 			t.Fatal("Expected an error, but got nothing")
 		}
 	})

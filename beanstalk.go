@@ -18,7 +18,7 @@ const (
 	uriUDSType uriType = "unix"
 )
 
-// ParseURI returns the socket of the specified URI and if the connection is
+// parseURI returns the socket of the specified URI and if the connection is
 // supposed to be a TLS or plaintext connection. Valid URI schemes are:
 //
 //		beanstalk://host:port
@@ -29,7 +29,7 @@ const (
 // Where both the beanstalks and tls scheme mean the same thing. Alternatively,
 // it is also possibly to just specify the host:port combo which is assumed to
 // be a plaintext connection.
-func ParseURI(uri string) (string, uriType, error) {
+func parseURI(uri string) (string, uriType, error) {
 	address := uri
 	uriType := uriTCPType
 
@@ -95,7 +95,7 @@ func ValidURIs(uris []string) error {
 	}
 
 	for _, uri := range uris {
-		hostport, _, err := ParseURI(uri)
+		hostport, _, err := parseURI(uri)
 		if err != nil {
 			return err
 		}

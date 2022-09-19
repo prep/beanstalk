@@ -42,7 +42,7 @@ type Conn struct {
 
 // Dial into a beanstalk server.
 func Dial(uri string, config Config) (*Conn, error) {
-	socket, uriType, err := ParseURI(uri)
+	socket, uriType, err := parseURI(uri)
 	if err != nil {
 		return nil, err
 	}
