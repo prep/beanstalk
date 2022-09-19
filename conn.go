@@ -42,7 +42,7 @@ type Conn struct {
 
 // Dial into a beanstalk server.
 func Dial(uri string, config Config) (*Conn, error) {
-	socket, isTLS, err := ParseURI(uri)
+	socket, uriType, err := ParseURI(uri)
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +51,8 @@ func Dial(uri string, config Config) (*Conn, error) {
 
 	// Dial into the beanstalk server.
 	var netConn net.Conn
-	if isTLS {
+	switch uriType {
+	case uriTLSType:
 		tlsConn, err := tls.Dial("tcp", socket, config.TLSConfig)
 		if err != nil {
 			return nil, err
@@ -62,9 +63,14 @@ func Dial(uri string, config Config) (*Conn, error) {
 		}
 
 		netConn = tlsConn
-	} else {
+	case uriTCPType:
 		var err error
 		if netConn, err = net.Dial("tcp", socket); err != nil {
+			return nil, err
+		}
+	case uriUDSType:
+		var err error
+		if netConn, err = net.Dial("unix", socket); err != nil {
 			return nil, err
 		}
 	}
