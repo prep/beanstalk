@@ -121,7 +121,7 @@ config := beanstalk.Config{
 
 ### URIs
 
-NewProducer, NewConsumer and Dial take a URI or a list of URIs as their first argument, who can be described in various formats. In the above examples the beanstalk server was referenced by the host:port notation. This package also supports URI formats like beanstalk:// for a plaintext connection, and beanstalks:// or tls:// for encrypted connections.
+NewProducer, NewConsumer and Dial take a URI or a list of URIs as their first argument, who can be described in various formats. In the above examples the beanstalk server was referenced by the host:port notation. This package also supports URI formats like beanstalk:// for a plaintext connection, and beanstalks:// or tls:// for encrypted connections, and unix:// for Unix Domain Socket connections.
 
 In the case of encrypted connections, if no port has been specified it will default to port 11400 as opposed to the default 11300 port.
 

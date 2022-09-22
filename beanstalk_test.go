@@ -4,46 +4,65 @@ import "testing"
 
 func TestParseURI(t *testing.T) {
 	t.Run("WithValidSchemes", func(t *testing.T) {
-		for _, scheme := range []string{"beanstalk", "beanstalks", "tls"} {
-			uri := scheme + "://localhost:12345"
+		cases := []struct {
+			uri     string
+			uriType uriType
+			address string
+		}{
+			{
+				uri:     "beanstalk://localhost:12345",
+				uriType: uriTCPType,
+				address: "localhost:12345",
+			},
+			{
+				uri:     "beanstalks://localhost:12345",
+				uriType: uriTLSType,
+				address: "localhost:12345",
+			},
+			{
+				uri:     "tls://localhost:12345",
+				uriType: uriTLSType,
+				address: "localhost:12345",
+			},
+			{
+				uri:     "unix:///tmp/beanstalkd.sock",
+				uriType: uriUDSType,
+				address: "/tmp/beanstalkd.sock",
+			},
+		}
 
-			host, useTLS, err := ParseURI(uri)
-			switch {
-			case err != nil:
-				t.Errorf("Unable to parse URI: %s", uri)
-			case host != "localhost:12345":
-				t.Errorf("Unexpected host: %s", host)
-			}
+		for _, c := range cases {
+			t.Run(string(c.uriType), func(t *testing.T) {
+				address, uriType, err := parseURI(c.uri)
+				if err != nil {
+					t.Errorf("Unable to parse URI: %s", c.uri)
+				}
 
-			switch scheme {
-			case "beanstalk":
-				if useTLS {
-					t.Errorf("%s: scheme shouldn't support TLS", scheme)
+				if address != c.address {
+					t.Errorf("Got address: %q, expected: %q", address, c.address)
 				}
-			case "beanstalks", "tls":
-				if !useTLS {
-					t.Errorf("%s: scheme should support TLS", scheme)
+
+				if uriType != c.uriType {
+					t.Errorf("Got URI type: %q, expected: %q", uriType, c.uriType)
 				}
-			default:
-				t.Fatalf("%s: unknown scheme", scheme)
-			}
+			})
 		}
 	})
 
 	t.Run("WithMissingScheme", func(t *testing.T) {
-		host, useTLS, err := ParseURI("localhost:11300")
+		host, uriType, err := parseURI("localhost:11300")
 		switch {
 		case err != nil:
 			t.Fatalf("Error parsing URI without scheme: %s", err)
 		case host != "localhost:11300":
 			t.Errorf("Unexpected host: %s", host)
-		case useTLS:
-			t.Error("Unexpected TLS to be set")
+		case uriType != uriTCPType:
+			t.Errorf("Got uri type: %q, expected: %q", uriType, uriTCPType)
 		}
 	})
 
 	t.Run("WithMissingPort", func(t *testing.T) {
-		host, _, err := ParseURI("beanstalk://localhost")
+		host, _, err := parseURI("beanstalk://localhost")
 		switch {
 		case err != nil:
 			t.Fatalf("Error parsing URI without port")
@@ -53,7 +72,7 @@ func TestParseURI(t *testing.T) {
 	})
 
 	t.Run("WithMissingTLSPort", func(t *testing.T) {
-		host, _, err := ParseURI("beanstalks://localhost")
+		host, _, err := parseURI("beanstalks://localhost")
 		switch {
 		case err != nil:
 			t.Fatalf("Error parsing URI without port")
@@ -63,7 +82,7 @@ func TestParseURI(t *testing.T) {
 	})
 
 	t.Run("WithInvalidScheme", func(t *testing.T) {
-		if _, _, err := ParseURI("foo://localhost:12345"); err == nil {
+		if _, _, err := parseURI("foo://localhost:12345"); err == nil {
 			t.Fatal("Expected an error, but got nothing")
 		}
 	})

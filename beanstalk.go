@@ -10,54 +10,70 @@ import (
 	"time"
 )
 
-// ParseURI returns the socket of the specified URI and if the connection is
+type uriType string
+
+const (
+	uriTCPType uriType = "tcp"
+	uriTLSType uriType = "tls"
+	uriUDSType uriType = "unix"
+)
+
+// parseURI returns the socket of the specified URI and if the connection is
 // supposed to be a TLS or plaintext connection. Valid URI schemes are:
 //
 //		beanstalk://host:port
 //		beanstalks://host:port
 //		tls://host:port
+//              unix://path
 //
 // Where both the beanstalks and tls scheme mean the same thing. Alternatively,
 // it is also possibly to just specify the host:port combo which is assumed to
 // be a plaintext connection.
-func ParseURI(uri string) (string, bool, error) {
-	var host string
-	var isTLS bool
+func parseURI(uri string) (string, uriType, error) {
+	address := uri
+	uriType := uriTCPType
 
 	if strings.Contains(uri, "://") {
 		url, err := url.Parse(uri)
 		if err != nil {
-			return "", false, err
+			return "", uriType, err
 		}
 
 		// Determine the protocol scheme of the URI.
 		switch strings.ToLower(url.Scheme) {
 		case "beanstalk":
+			uriType = uriTCPType
+			address = url.Host
 		case "beanstalks", "tls":
-			isTLS = true
+			uriType = uriTLSType
+			address = url.Host
+		case "unix":
+			uriType = uriUDSType
+			address = url.Path
 		default:
-			return "", false, fmt.Errorf("%s: unknown beanstalk URI scheme", url.Scheme)
+			return "", uriType, fmt.Errorf("%s: unknown beanstalk URI scheme", url.Scheme)
 		}
 
-		host = url.Host
-	} else {
-		host = uri
+	}
+
+	if uriType == uriUDSType {
+		return address, uriType, nil
 	}
 
 	// Validate the resulting host:port combo.
-	_, _, err := net.SplitHostPort(host)
+	_, _, err := net.SplitHostPort(address)
 	switch {
 	case err != nil && strings.Contains(err.Error(), "missing port in address"):
-		if isTLS {
-			host += ":11400"
+		if uriType == uriTLSType {
+			address += ":11400"
 		} else {
-			host += ":11300"
+			address += ":11300"
 		}
 	case err != nil:
-		return "", false, err
+		return "", uriType, err
 	}
 
-	return host, isTLS, nil
+	return address, uriType, nil
 }
 
 // includes returns true if s is contained in a.
@@ -79,7 +95,7 @@ func ValidURIs(uris []string) error {
 	}
 
 	for _, uri := range uris {
-		hostport, _, err := ParseURI(uri)
+		hostport, _, err := parseURI(uri)
 		if err != nil {
 			return err
 		}
