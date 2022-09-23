@@ -2,6 +2,39 @@ package beanstalk
 
 import "testing"
 
+func TestValidURIs(t *testing.T) {
+	cases := map[string]struct {
+		uris     []string
+		expected bool
+	}{
+		"no address": {
+			uris:     []string{},
+			expected: false,
+		},
+		"unix socket": {
+			uris:     []string{"unix:///tmp/beanstalk.sock"},
+			expected: true,
+		},
+		"tcp socket": {
+			uris:     []string{"tls://localhost:12345"},
+			expected: true,
+		},
+	}
+
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			actual := true
+			if err := ValidURIs(c.uris); err != nil {
+				actual = false
+			}
+
+			if actual != c.expected {
+				t.Errorf("Got validity: %v, expected: %v", actual, c.expected)
+			}
+		})
+	}
+}
+
 func TestParseURI(t *testing.T) {
 	t.Run("WithValidSchemes", func(t *testing.T) {
 		cases := []struct {

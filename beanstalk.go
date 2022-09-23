@@ -95,12 +95,16 @@ func ValidURIs(uris []string) error {
 	}
 
 	for _, uri := range uris {
-		hostport, _, err := parseURI(uri)
+		address, uriType, err := parseURI(uri)
 		if err != nil {
 			return err
 		}
 
-		host, _, err := net.SplitHostPort(hostport)
+		if uriType == uriUDSType {
+			continue
+		}
+
+		host, _, err := net.SplitHostPort(address)
 		if err != nil {
 			return err
 		}
