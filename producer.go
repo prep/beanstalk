@@ -26,6 +26,12 @@ func NewProducer(uris []string, config Config) (*Producer, error) {
 		}
 	}
 
+	if !config.SkipTryURIConnectable {
+		if err := DialURIs(uris, config); err != nil {
+			return nil, err
+		}
+	}
+
 	// Create a context that can be cancelled to stop the producers.
 	ctx, cancel := context.WithCancel(context.Background())
 

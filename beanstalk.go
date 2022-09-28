@@ -113,6 +113,23 @@ func ValidURIs(uris []string) error {
 	return nil
 }
 
+// DialURIs return an error if any of the specified URIs is un connectable
+func DialURIs(uris []string, config Config) error {
+	if len(uris) == 0 {
+		return errors.New("no URIs specified")
+	}
+	for _, uri := range uris {
+		connection, err := Dial(uri, config)
+		if err != nil {
+			return err
+		} else {
+			// close the connection if test ok
+			_ = connection.Close()
+		}
+	}
+	return nil
+}
+
 type connHandler struct {
 	// setup the connection after it has been established. This is used by
 	// the consumer to watch the proper tubes.
