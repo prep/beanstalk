@@ -25,6 +25,12 @@ func NewConsumer(uris, tubes []string, config Config) (*Consumer, error) {
 		}
 	}
 
+	if !config.SkipTryURIConnectable {
+		if err := DialURIs(uris, config); err != nil {
+			return nil, err
+		}
+	}
+
 	config = config.normalize()
 
 	return &Consumer{
