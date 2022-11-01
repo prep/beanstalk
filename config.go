@@ -42,6 +42,8 @@ type Config struct {
 	ErrorFunc func(err error, message string)
 	// IgnoreURIValidation skips the step of calling ValidURIs() method during initialization
 	IgnoreURIValidation bool
+	// SkipTryURIConnectable do not test the URI is connectable before NewProducer
+	SkipTryURIConnectable bool
 }
 
 func (config Config) normalize() Config {
