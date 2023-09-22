@@ -16,6 +16,10 @@ type PutParams struct {
 	TTR      time.Duration `yaml:"ttr"`
 }
 
+// ReleaseFunc describes the function that is called whenever a job is buried,
+// deleted, or released.
+type ReleaseFunc func(tube string)
+
 // Job describes a beanstalk job and its stats.
 type Job struct {
 	ID         uint64
@@ -34,8 +38,8 @@ type Job struct {
 		Buries    int           `yaml:"buries"`
 		Kicks     int           `yaml:"kicks"`
 	}
-
-	conn *Conn
+	ReleaseFunc ReleaseFunc
+	conn        *Conn
 }
 
 // Bury this job.
@@ -49,9 +53,9 @@ func (job *Job) BuryWithPriority(ctx context.Context, priority uint32) error {
 		return ErrJobFinished
 	}
 
-	err := job.conn.bury(ctx, job, priority)
+	err := job.conn.Bury(ctx, job, priority)
 	job.conn = nil
-	return err
+	return job.handleRelease(err)
 }
 
 // Delete this job.
@@ -62,7 +66,7 @@ func (job *Job) Delete(ctx context.Context) error {
 
 	err := job.conn.Delete(ctx, job.ID)
 	job.conn = nil
-	return err
+	return job.handleRelease(err)
 }
 
 // Release this job back with its original priority and without delay.
@@ -76,9 +80,20 @@ func (job *Job) ReleaseWithParams(ctx context.Context, priority uint32, delay ti
 		return ErrJobFinished
 	}
 
-	err := job.conn.release(ctx, job, priority, delay)
+	err := job.conn.Release(ctx, job, priority, delay)
 	job.conn = nil
-	return err
+	return job.handleRelease(err)
+}
+
+func (job *Job) handleRelease(err error) error {
+	if err != nil {
+		return err
+	}
+	if job.ReleaseFunc != nil {
+		job.ReleaseFunc(job.Stats.Tube)
+	}
+
+	return nil
 }
 
 // Touch the job thereby resetting its reserved status.
@@ -87,7 +102,7 @@ func (job *Job) Touch(ctx context.Context) error {
 		return ErrJobFinished
 	}
 
-	return job.conn.touch(ctx, job)
+	return job.conn.Touch(ctx, job)
 }
 
 // TouchAfter returns the duration until this jobs needs to be touched for its
@@ -107,5 +122,5 @@ func (job *Job) Kick(ctx context.Context) error {
 		return ErrJobFinished
 	}
 
-	return job.conn.kick(ctx, job)
+	return job.conn.KickJob(ctx, job)
 }

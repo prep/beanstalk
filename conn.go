@@ -217,8 +217,8 @@ func (conn *Conn) lcommand(ctx context.Context, format string, params ...interfa
 	return conn.command(ctx, format, params...)
 }
 
-func (conn *Conn) bury(ctx context.Context, job *Job, priority uint32) error {
-	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/Conn.bury")
+func (conn *Conn) Bury(ctx context.Context, job *Job, priority uint32) error {
+	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/Conn.Bury")
 	defer span.End()
 
 	_, _, err := conn.lcommand(ctx, "bury %d %d", job.ID, priority)
@@ -270,8 +270,8 @@ func (conn *Conn) Kick(ctx context.Context, tube string, bound int) (int64, erro
 	return int64(count), nil
 }
 
-func (conn *Conn) kick(ctx context.Context, job *Job) error {
-	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/Conn.kick")
+func (conn *Conn) KickJob(ctx context.Context, job *Job) error {
+	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/Conn.KickJob")
 	defer span.End()
 
 	if job == nil {
@@ -421,7 +421,8 @@ func (conn *Conn) Put(ctx context.Context, tube string, body []byte, params PutP
 	return id, err
 }
 
-func (conn *Conn) release(ctx context.Context, job *Job, priority uint32, delay time.Duration) error {
+// Release a job back into the tube with the specified priority and delay.
+func (conn *Conn) Release(ctx context.Context, job *Job, priority uint32, delay time.Duration) error {
 	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/Conn.release")
 	defer span.End()
 
@@ -506,9 +507,9 @@ func (conn *Conn) statsJob(ctx context.Context, job *Job) error {
 	return nil
 }
 
-// touch the job thereby resetting its reserved status.
-func (conn *Conn) touch(ctx context.Context, job *Job) error {
-	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/Conn.touch")
+// Touch the job thereby resetting its reserved status.
+func (conn *Conn) Touch(ctx context.Context, job *Job) error {
+	ctx, span := trace.StartSpan(ctx, "github.com/prep/beanstalk/Conn.Touch")
 	defer span.End()
 
 	touchedAt := time.Now()

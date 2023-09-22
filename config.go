@@ -40,7 +40,9 @@ type Config struct {
 	InfoFunc func(message string)
 	// ErrorFunc is called to log error messages.
 	ErrorFunc func(err error, message string)
-	// IgnoreURIValidation skips the step of calling ValidURIs() method during initialization
+	// IgnoreURIValidation skips URI validation. This is useful in dynamic
+	// infrastructure (like k8s) where the DNS name of the beanstalk server
+	// might not resolve at startup time.
 	IgnoreURIValidation bool
 }
 
