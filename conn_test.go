@@ -166,7 +166,7 @@ func TestConn(t *testing.T) {
 			return ""
 		})
 
-		if err := conn.bury(ctx, &Job{ID: 1}, 10); err != nil {
+		if err := conn.Bury(ctx, &Job{ID: 1}, 10); err != nil {
 			t.Fatalf("Error burying job: %s", err)
 		}
 
@@ -183,7 +183,7 @@ func TestConn(t *testing.T) {
 				return ""
 			})
 
-			err := conn.bury(ctx, &Job{ID: 2}, 11)
+			err := conn.Bury(ctx, &Job{ID: 2}, 11)
 			switch {
 			case errors.Is(err, ErrNotFound):
 			case err != nil:
@@ -355,7 +355,7 @@ func TestConn(t *testing.T) {
 			return ""
 		})
 
-		err := conn.release(ctx, &Job{ID: 8}, 12, 20*time.Second)
+		err := conn.Release(ctx, &Job{ID: 8}, 12, 20*time.Second)
 		if err != nil {
 			t.Fatalf("Error releasing job: %s", err)
 		}
@@ -373,7 +373,7 @@ func TestConn(t *testing.T) {
 				return ""
 			})
 
-			err = conn.release(ctx, &Job{ID: 9}, 13, 21*time.Second)
+			err = conn.Release(ctx, &Job{ID: 9}, 13, 21*time.Second)
 			switch {
 			case errors.Is(err, ErrBuried):
 			case err != nil:
@@ -394,7 +394,7 @@ func TestConn(t *testing.T) {
 				return ""
 			})
 
-			err = conn.release(ctx, &Job{ID: 10}, 14, 22*time.Second)
+			err = conn.Release(ctx, &Job{ID: 10}, 14, 22*time.Second)
 			switch {
 			case errors.Is(err, ErrNotFound):
 			case err != nil:
@@ -550,7 +550,7 @@ func TestConn(t *testing.T) {
 		job := &Job{ID: 13}
 		job.Stats.PutParams.TTR = 5 * time.Second
 
-		err := conn.touch(ctx, job)
+		err := conn.Touch(ctx, job)
 		switch {
 		case err != nil:
 			t.Fatalf("Error watching a channel: %s", err)
@@ -574,7 +574,7 @@ func TestConn(t *testing.T) {
 				return ""
 			})
 
-			err = conn.touch(ctx, &Job{ID: 14})
+			err = conn.Touch(ctx, &Job{ID: 14})
 			switch {
 			case errors.Is(err, ErrNotFound):
 			case err != nil:
@@ -672,7 +672,7 @@ func TestConn(t *testing.T) {
 		job := Job{ID: 1}
 		job.Stats.Tube = "default"
 
-		if err := conn.kick(ctx, &job); err != nil {
+		if err := conn.KickJob(ctx, &job); err != nil {
 			t.Fatalf("Error kicking job: %s", err)
 		}
 
@@ -692,7 +692,7 @@ func TestConn(t *testing.T) {
 			job := Job{ID: 1}
 			job.Stats.Tube = "default"
 
-			err := conn.kick(ctx, &job)
+			err := conn.KickJob(ctx, &job)
 			switch {
 			case errors.Is(err, ErrNotFound):
 			case err != nil:
