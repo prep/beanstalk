@@ -103,6 +103,16 @@ type producer struct {
 func (producer *producer) setConnection(ctx context.Context, conn *Conn) error {
 	producer.mu.Lock()
 	producer.conn = conn
+
+	// Check if context is already done before releasing lock.
+	select {
+	case <-ctx.Done():
+		producer.conn = nil
+		producer.mu.Unlock()
+		return nil
+	default:
+	}
+
 	producer.mu.Unlock()
 
 	select {

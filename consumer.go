@@ -69,7 +69,11 @@ func (consumer *Consumer) worker(ctx context.Context, fn func(ctx context.Contex
 
 		select {
 		// If a reserved job comes in, pass it to fn.
-		case job := <-jobC:
+		case job, ok := <-jobC:
+			// Channel closed means reserveJobs exited; retry.
+			if !ok {
+				continue
+			}
 			func() {
 				defer job.Release(context.Background())
 				fn(context.Background(), job)
@@ -116,6 +120,19 @@ func (consumer *Consumer) reserveJobs(ctx context.Context, conn *Conn) error {
 	defer func() {
 		if err == nil {
 			consumer.wg.Wait()
+		}
+	}()
+
+	// Drain any pending reserve requests to prevent worker goroutine leaks.
+	defer func() {
+		for {
+			select {
+			case jobC := <-consumer.reserveC:
+				// Signal no job available by closing the channel.
+				close(jobC)
+			default:
+				return
+			}
 		}
 	}()
 
